@@ -2,9 +2,9 @@ import "apminsight";
 import express, { type Request, type Response } from "express";
 import cors from "cors";
 import { toNodeHandler } from "better-auth/node";
-import { auth } from "./lib/auth";
-import subjectRouter from "./db/routes/subject";
-import securityMiddleware from "./middleware/security";
+import { auth } from "./lib/auth.js";
+import subjectRouter from "./db/routes/subject.js";
+import securityMiddleware from "./middleware/security.js";
 
 const app = express();
 const PORT = process.env["PORT"] ?? 8000;

@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from "express";
-import { ajByRole } from "../lib/arcjet";
+import { ajByRole } from "../lib/arcjet.js";
 
 const securityMiddleware = async (req: Request, res: Response, next: NextFunction) => {
 	if (process.env.NODE_ENV === 'test') return next();

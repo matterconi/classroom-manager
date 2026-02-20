@@ -10,7 +10,7 @@ import {
   index,
   unique,
 } from "drizzle-orm/pg-core";
-import { user } from "./auth";
+import { user } from "./auth.js";
 
 // ── Shared timestamps ──────────────────────────────────────────────────────────
 
