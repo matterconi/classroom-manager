@@ -7,7 +7,7 @@ import subjectRouter from "./db/routes/subject.js";
 import securityMiddleware from "./middleware/security.js";
 
 const app = express();
-const PORT = process.env["PORT"] ?? 8000;
+const PORT = Number(process.env["PORT"] ?? 8000);
 
 app.all('/api/auth/*splat', toNodeHandler(auth))
 
@@ -28,6 +28,6 @@ app.get("/", (_req: Request, res: Response) => {
   res.json({ message: "Classroom Backend API" });
 });
 
-app.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
+app.listen(PORT, "0.0.0.0", () => {
+  console.log(`Server running on http://0.0.0.0:${PORT}`);
 });
