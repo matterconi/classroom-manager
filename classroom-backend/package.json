@@ -1,0 +1,33 @@
+{
+  "name": "classroom-backend",
+  "version": "1.0.0",
+  "description": "Classroom Manager Backend API",
+  "type": "module",
+  "main": "dist/server.js",
+  "scripts": {
+    "dev": "tsx watch --env-file=.env src/server.ts",
+    "build": "tsc",
+    "start": "node dist/server.js",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate"
+  },
+  "dependencies": {
+    "@arcjet/inspect": "^1.1.0",
+    "@arcjet/node": "^1.1.0",
+    "@neondatabase/serverless": "^1.0.2",
+    "apminsight": "^5.3.0",
+    "better-auth": "^1.4.18",
+    "cors": "^2.8.6",
+    "dotenv": "^17.3.1",
+    "drizzle-orm": "^0.45.1",
+    "express": "^5.2.1"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.1",
+    "@types/node": "^22.13.4",
+    "drizzle-kit": "^0.31.9",
+    "tsx": "^4.19.3",
+    "typescript": "^5.7.3"
+  }
+}
