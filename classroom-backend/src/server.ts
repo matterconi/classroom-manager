@@ -3,7 +3,9 @@ import express, { type Request, type Response } from "express";
 import cors from "cors";
 import { toNodeHandler } from "better-auth/node";
 import { auth } from "./lib/auth.js";
-import subjectRouter from "./db/routes/subject.js";
+import subjectRouter from "./db/routes/subjects.js";
+import userRouter from "./db/routes/users.js";
+import classRouter from "./db/routes/classes.js";
 import securityMiddleware from "./middleware/security.js";
 
 const app = express();
@@ -23,6 +25,8 @@ app.use(
 app.use(securityMiddleware);
 
 app.use("/api/subjects", subjectRouter);
+app.use("/api/users", userRouter);
+app.use("/api/classes", classRouter);
 
 app.get("/", (_req: Request, res: Response) => {
   res.json({ message: "Classroom Backend API" });

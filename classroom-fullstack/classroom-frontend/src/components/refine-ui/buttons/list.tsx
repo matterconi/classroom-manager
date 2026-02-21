@@ -58,7 +58,7 @@ export const ListButton = React.forwardRef<
       >
         {children ?? (
           <div className="flex items-center gap-2 font-semibold">
-            <List className="w-4 h-4" />
+            <List className="h-4 w-4" />
             <span>{label}</span>
           </div>
         )}

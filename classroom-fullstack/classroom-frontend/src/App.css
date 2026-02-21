@@ -15,7 +15,7 @@
 
 @layer components {
   .page-title {
-    @apply text-3xl font-bold text-foreground tracking-tight;
+    @apply text-foreground text-3xl font-bold tracking-tight;
   }
 
   .column-title {
@@ -23,19 +23,19 @@
   }
 
   .search-field {
-    @apply relative w-full max-h-9 md:max-w-72;
+    @apply relative max-h-9 w-full md:max-w-72;
 
     .search-icon {
-      @apply absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-primary;
+      @apply text-primary absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2;
     }
   }
 
   .actions-row {
-    @apply flex flex-col gap-3 sm:flex-row sm:gap-2 w-full sm:w-auto;
+    @apply flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:gap-2;
   }
 
   .sign-up {
-    @apply flex flex-col items-center justify-center px-6 py-8 min-h-svh;
+    @apply flex min-h-svh flex-col items-center justify-center px-6 py-8;
 
     .logo {
       @apply flex items-center justify-center;
@@ -46,7 +46,7 @@
     }
 
     .card {
-      @apply w-full max-w-xl p-12 mt-6;
+      @apply mt-6 w-full max-w-xl p-12;
     }
 
     .header {
@@ -81,7 +81,7 @@
       @apply grid w-full grid-cols-2 gap-3;
 
       .role-button {
-        @apply flex flex-col items-center justify-center gap-2 rounded-md border border-input bg-background p-3 text-sm font-medium transition-colors;
+        @apply border-input bg-background flex flex-col items-center justify-center gap-2 rounded-md border p-3 text-sm font-medium transition-colors;
 
         &.is-active {
           @apply border-primary bg-primary/10 text-primary;
@@ -102,11 +102,11 @@
     }
 
     .submit {
-      @apply w-full mt-2;
+      @apply mt-2 w-full;
     }
 
     .footer {
-      @apply w-full text-center text-sm px-0;
+      @apply w-full px-0 text-center text-sm;
 
       span {
         @apply text-muted-foreground mr-2;
@@ -119,22 +119,22 @@
   }
 
   .intro-row {
-    @apply flex flex-col gap-5 lg:flex-row justify-between space-y-4;
+    @apply flex flex-col justify-between gap-5 space-y-4 lg:flex-row;
   }
 
   .class-view {
-    @apply container mx-auto pb-8 px-2 sm:px-4;
+    @apply container mx-auto px-2 pb-8 sm:px-4;
   }
 
   .class-form-card {
-    @apply max-w-3xl gap-2 w-full mx-auto relative overflow-hidden border shadow-sm border-foreground/20;
+    @apply border-foreground/20 relative mx-auto w-full max-w-3xl gap-2 overflow-hidden border shadow-sm;
   }
 
   .upload-dropzone {
-    @apply flex flex-col items-center justify-center gap-4 min-h-40 border-2 border-dashed border-foreground/20 bg-primary/5 w-full mt-3 cursor-pointer disabled:opacity-70 disabled:cursor-not-allowed rounded-md;
+    @apply border-foreground/20 bg-primary/5 mt-3 flex min-h-40 w-full cursor-pointer flex-col items-center justify-center gap-4 rounded-md border-2 border-dashed disabled:cursor-not-allowed disabled:opacity-70;
 
     .upload-prompt {
-      @apply flex flex-col sm:flex-row items-center justify-center gap-4 p-5;
+      @apply flex flex-col items-center justify-center gap-4 p-5 sm:flex-row;
 
       .icon {
         @apply size-10 text-orange-600;
@@ -144,11 +144,11 @@
         @apply text-center sm:text-left;
 
         :first-child {
-          @apply text-sm font-bold text-orange-600 mb-1;
+          @apply mb-1 text-sm font-bold text-orange-600;
         }
 
         :last-child {
-          @apply text-xs text-foreground/60;
+          @apply text-foreground/60 text-xs;
         }
       }
     }
@@ -158,7 +158,7 @@
     @apply relative w-full;
 
     img {
-      @apply size-full object-cover rounded-md;
+      @apply size-full rounded-md object-cover;
     }
 
     button {
@@ -168,7 +168,7 @@
 
   .class-show {
     .state-message {
-      @apply mt-6 text-sm text-muted-foreground;
+      @apply text-muted-foreground mt-6 text-sm;
     }
 
     .state-message.is-error {
@@ -179,7 +179,7 @@
       @apply mt-5 mb-1;
 
       img {
-        @apply w-full aspect-5/1 rounded-xl object-cover shadow-md;
+        @apply aspect-5/1 w-full rounded-xl object-cover shadow-md;
       }
 
       .placeholder {
@@ -188,21 +188,21 @@
     }
 
     .details-card {
-      @apply p-6 sm:p-8 space-y-3 shadow-md;
+      @apply space-y-3 p-6 shadow-md sm:p-8;
     }
 
     .details-header {
-      @apply flex flex-col sm:flex-row sm:items-start justify-between gap-5 mb-4;
+      @apply mb-4 flex flex-col justify-between gap-5 sm:flex-row sm:items-start;
 
       > div:first-child {
         @apply flex-1 space-y-2;
 
         h1 {
-          @apply text-xl sm:text-2xl font-bold;
+          @apply text-xl font-bold sm:text-2xl;
         }
 
         p {
-          @apply text-sm text-muted-foreground;
+          @apply text-muted-foreground text-sm;
         }
       }
 
@@ -224,18 +224,18 @@
     }
 
     .details-grid {
-      @apply grid sm:grid-cols-2 mt-8 gap-10 text-sm;
+      @apply mt-8 grid gap-10 text-sm sm:grid-cols-2;
     }
 
     .instructor {
       @apply space-y-2;
 
       > p {
-        @apply text-xs mb-3 font-bold text-gray-400 uppercase tracking-wider;
+        @apply mb-3 text-xs font-bold tracking-wider text-gray-400 uppercase;
       }
 
       > div {
-        @apply space-y-2 flex items-center gap-2;
+        @apply flex items-center gap-2 space-y-2;
       }
 
       img {
@@ -243,11 +243,11 @@
       }
 
       > div > div > p:first-child {
-        @apply text-base font-mono font-bold text-primary;
+        @apply text-primary font-mono text-base font-bold;
       }
 
       > div > div > p:last-child {
-        @apply text-sm font-medium mb-2;
+        @apply mb-2 text-sm font-medium;
       }
     }
 
@@ -255,18 +255,18 @@
       @apply space-y-2;
 
       > p {
-        @apply text-xs font-bold text-muted-foreground uppercase tracking-wider;
+        @apply text-muted-foreground text-xs font-bold tracking-wider uppercase;
       }
 
       > div {
         @apply space-y-2;
 
         p:first-child {
-          @apply text-lg font-bold text-primary;
+          @apply text-primary text-lg font-bold;
         }
 
         p:last-child {
-          @apply text-sm text-muted-foreground line-clamp-1;
+          @apply text-muted-foreground line-clamp-1 text-sm;
         }
       }
     }
@@ -275,7 +275,7 @@
       @apply space-y-2;
 
       > p {
-        @apply text-xs font-bold text-muted-foreground uppercase tracking-wider;
+        @apply text-muted-foreground text-xs font-bold tracking-wider uppercase;
       }
 
       > div {
@@ -286,11 +286,11 @@
         }
 
         p:first-of-type {
-          @apply text-lg font-bold text-primary;
+          @apply text-primary text-lg font-bold;
         }
 
         p:last-of-type {
-          @apply text-sm text-muted-foreground mt-2 leading-relaxed;
+          @apply text-muted-foreground mt-2 text-sm leading-relaxed;
         }
       }
     }
@@ -299,11 +299,11 @@
       @apply space-y-2;
 
       h2 {
-        @apply text-xs font-bold text-muted-foreground uppercase tracking-wider;
+        @apply text-muted-foreground text-xs font-bold tracking-wider uppercase;
       }
 
       ol {
-        @apply text-sm text-muted-foreground space-y-1.5 list-decimal list-inside mt-2;
+        @apply text-muted-foreground mt-2 list-inside list-decimal space-y-1.5 text-sm;
       }
     }
   }
@@ -354,16 +354,16 @@
   --shadow-color: hsl(0 0% 0%);
   --shadow-2xs: 0px 1px 2px 0px hsl(0 0% 0% / 0.09);
   --shadow-xs: 0px 1px 2px 0px hsl(0 0% 0% / 0.09);
-  --shadow-sm: 0px 1px 2px 0px hsl(0 0% 0% / 0.18),
-    0px 1px 2px -1px hsl(0 0% 0% / 0.18);
-  --shadow: 0px 1px 2px 0px hsl(0 0% 0% / 0.18),
-    0px 1px 2px -1px hsl(0 0% 0% / 0.18);
-  --shadow-md: 0px 1px 2px 0px hsl(0 0% 0% / 0.18),
-    0px 2px 4px -1px hsl(0 0% 0% / 0.18);
-  --shadow-lg: 0px 1px 2px 0px hsl(0 0% 0% / 0.18),
-    0px 4px 6px -1px hsl(0 0% 0% / 0.18);
-  --shadow-xl: 0px 1px 2px 0px hsl(0 0% 0% / 0.18),
-    0px 8px 10px -1px hsl(0 0% 0% / 0.18);
+  --shadow-sm:
+    0px 1px 2px 0px hsl(0 0% 0% / 0.18), 0px 1px 2px -1px hsl(0 0% 0% / 0.18);
+  --shadow:
+    0px 1px 2px 0px hsl(0 0% 0% / 0.18), 0px 1px 2px -1px hsl(0 0% 0% / 0.18);
+  --shadow-md:
+    0px 1px 2px 0px hsl(0 0% 0% / 0.18), 0px 2px 4px -1px hsl(0 0% 0% / 0.18);
+  --shadow-lg:
+    0px 1px 2px 0px hsl(0 0% 0% / 0.18), 0px 4px 6px -1px hsl(0 0% 0% / 0.18);
+  --shadow-xl:
+    0px 1px 2px 0px hsl(0 0% 0% / 0.18), 0px 8px 10px -1px hsl(0 0% 0% / 0.18);
   --shadow-2xl: 0px 1px 2px 0px hsl(0 0% 0% / 0.45);
   --tracking-normal: 0em;
   --spacing: 0.25rem;
@@ -414,16 +414,16 @@
   --shadow-color: hsl(0 0% 0%);
   --shadow-2xs: 0px 1px 2px 0px hsl(0 0% 0% / 0.09);
   --shadow-xs: 0px 1px 2px 0px hsl(0 0% 0% / 0.09);
-  --shadow-sm: 0px 1px 2px 0px hsl(0 0% 0% / 0.18),
-    0px 1px 2px -1px hsl(0 0% 0% / 0.18);
-  --shadow: 0px 1px 2px 0px hsl(0 0% 0% / 0.18),
-    0px 1px 2px -1px hsl(0 0% 0% / 0.18);
-  --shadow-md: 0px 1px 2px 0px hsl(0 0% 0% / 0.18),
-    0px 2px 4px -1px hsl(0 0% 0% / 0.18);
-  --shadow-lg: 0px 1px 2px 0px hsl(0 0% 0% / 0.18),
-    0px 4px 6px -1px hsl(0 0% 0% / 0.18);
-  --shadow-xl: 0px 1px 2px 0px hsl(0 0% 0% / 0.18),
-    0px 8px 10px -1px hsl(0 0% 0% / 0.18);
+  --shadow-sm:
+    0px 1px 2px 0px hsl(0 0% 0% / 0.18), 0px 1px 2px -1px hsl(0 0% 0% / 0.18);
+  --shadow:
+    0px 1px 2px 0px hsl(0 0% 0% / 0.18), 0px 1px 2px -1px hsl(0 0% 0% / 0.18);
+  --shadow-md:
+    0px 1px 2px 0px hsl(0 0% 0% / 0.18), 0px 2px 4px -1px hsl(0 0% 0% / 0.18);
+  --shadow-lg:
+    0px 1px 2px 0px hsl(0 0% 0% / 0.18), 0px 4px 6px -1px hsl(0 0% 0% / 0.18);
+  --shadow-xl:
+    0px 1px 2px 0px hsl(0 0% 0% / 0.18), 0px 8px 10px -1px hsl(0 0% 0% / 0.18);
   --shadow-2xl: 0px 1px 2px 0px hsl(0 0% 0% / 0.45);
 }
 

@@ -1,7 +1,7 @@
 import { CreateView } from "@/components/refine-ui/views/create-view.tsx";
 import { Breadcrumb } from "@/components/refine-ui/layout/breadcrumb.tsx";
 import { Button } from "@/components/ui/button.tsx";
-import { useBack } from "@refinedev/core";
+import { useBack, useList } from "@refinedev/core";
 import { Separator } from "@/components/ui/separator.tsx";
 import {
   Card,
@@ -33,7 +33,7 @@ import {
 import { Textarea } from "@/components/ui/textarea.tsx";
 import { Loader2 } from "lucide-react";
 import UploadWidget from "@/components/ui/upload-widget";
-import type { UploadWidgetValue } from "@/types";
+import type { Subject, UploadWidgetValue, User } from "@/types";
 
 const Create = () => {
   const back = useBack();
@@ -51,43 +51,49 @@ const Create = () => {
   });
 
   const {
+    refineCore: { onFinish },
     handleSubmit,
     formState: { isSubmitting, errors },
     control,
   } = form;
 
-const onSubmit = async (values: Record<string, unknown>) => {
+  const onSubmit = async (values: Record<string, unknown>) => {
     try {
       const data = values as z.infer<typeof classSchema>;
-      console.log(data);
+      await onFinish(data);
     } catch (error) {
       console.error("Error creating class:", error);
     }
   };
 
-  const teachers = [
-    {
-      id: 1,
-      name: "John Doe",
+  const { query: subjectsQuery } = useList<Subject>({
+    resource: "subjects",
+    pagination: {
+      pageSize: 100,
     },
-    {
-      id: 2,
-      name: "Jane Doe",
-    },
-  ];
+  });
 
-  const subjects = [
-    {
-      id: 1,
-      name: "Math",
-      code: "MATH",
+  const { query: teachersQuery } = useList<User>({
+    resource: "users",
+    filters: [
+      {
+        field: "role",
+        operator: "eq",
+        value: "teacher",
+      },
+    ],
+    pagination: {
+      pageSize: 100,
     },
-    {
-      id: 2,
-      name: "English",
-      code: "ENG",
-    },
-  ];
+  });
+
+  const subjects = subjectsQuery?.data?.data || [];
+
+  const subjectLoading = subjectsQuery.isLoading;
+
+  const teachers = teachersQuery?.data?.data || [];
+
+  const teachersLoading = teachersQuery.isLoading;
 
   const bannerPublicId = form.watch("bannerCldPubId");
 
@@ -130,15 +136,22 @@ const onSubmit = async (values: Record<string, unknown>) => {
                           <UploadWidget
                             value={
                               field.value
-                                ? { url: field.value, publicId: bannerPublicId ?? "" }
+                                ? {
+                                    url: field.value,
+                                    publicId: bannerPublicId ?? "",
+                                  }
                                 : null
                             }
                             onChange={(file: UploadWidgetValue | null) => {
                               field.onChange(file?.url ?? "");
-                              form.setValue("bannerCldPubId", file?.publicId ?? "", {
-                                shouldValidate: true,
-                                shouldDirty: true,
-                              });
+                              form.setValue(
+                                "bannerCldPubId",
+                                file?.publicId ?? "",
+                                {
+                                  shouldValidate: true,
+                                  shouldDirty: true,
+                                }
+                              );
                             }}
                           />
                         </FormControl>
@@ -186,6 +199,7 @@ const onSubmit = async (values: Record<string, unknown>) => {
                             field.onChange(Number(value))
                           }
                           value={field.value?.toString()}
+                          disabled={subjectLoading}
                         >
                           <FormControl>
                             <SelectTrigger className="w-full">
@@ -219,6 +233,7 @@ const onSubmit = async (values: Record<string, unknown>) => {
                         <Select
                           onValueChange={field.onChange}
                           value={field.value}
+                          disabled={teachersLoading}
                         >
                           <FormControl>
                             <SelectTrigger className="w-full">

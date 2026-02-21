@@ -58,7 +58,7 @@ export const EditViewHeader = ({
 
   return (
     <div className={cn("flex flex-col", "gap-4", wrapperClassName)}>
-      <div className="flex items-center relative gap-2">
+      <div className="relative flex items-center gap-2">
         <div className="bg-background z-[2] pr-4">
           <Breadcrumb />
         </div>

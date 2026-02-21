@@ -18,8 +18,8 @@ export function DataTableSorter<TData>({
     column.getIsSorted() === "desc"
       ? `Sort by ${column.id} as descending`
       : column.getIsSorted() === "asc"
-      ? `Sort by ${column.id} as ascending`
-      : `Sort by ${column.id}`;
+        ? `Sort by ${column.id} as ascending`
+        : `Sort by ${column.id}`;
 
   return (
     <Button
@@ -29,7 +29,7 @@ export function DataTableSorter<TData>({
       title={title}
       aria-label={title}
       {...props}
-      className={cn("data-[state=open]:bg-accent", "w-5 h-5", className)}
+      className={cn("data-[state=open]:bg-accent", "h-5 w-5", className)}
     >
       {column.getIsSorted() === "desc" ? (
         <ArrowDown className={cn("text-primary", "!w-3", "!h-3")} />

@@ -55,7 +55,7 @@ export function DataTableFilterDropdown<TData>({
           size="icon"
           className={cn(
             "data-[state=open]:bg-accent",
-            "w-5 h-5",
+            "h-5 w-5",
             {
               "text-primary": isFiltered,
               "text-muted-foreground": !isFiltered,
@@ -268,11 +268,11 @@ export function DataTableFilterCombobox<TData>({
           ? Array.isArray(value)
             ? value
             : value && typeof value === "string"
-            ? [value]
-            : []
+              ? [value]
+              : []
           : value && typeof value === "string"
-          ? [value]
-          : [];
+            ? [value]
+            : [];
 
         const handleSelect = (optionValue: string) => {
           if (multiple) {
