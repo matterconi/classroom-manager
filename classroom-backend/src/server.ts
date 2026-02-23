@@ -6,6 +6,7 @@ import { auth } from "./lib/auth.js";
 import subjectRouter from "./db/routes/subjects.js";
 import userRouter from "./db/routes/users.js";
 import classRouter from "./db/routes/classes.js";
+import departmentRouter from "./db/routes/departments.js";
 import securityMiddleware from "./middleware/security.js";
 
 const app = express();
@@ -27,6 +28,7 @@ app.use(securityMiddleware);
 app.use("/api/subjects", subjectRouter);
 app.use("/api/users", userRouter);
 app.use("/api/classes", classRouter);
+app.use("/api/departments", departmentRouter);
 
 app.get("/", (_req: Request, res: Response) => {
   res.json({ message: "Classroom Backend API" });
