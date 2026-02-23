@@ -94,20 +94,60 @@ router.get('/', async (req, res) => {
 	}
 })
 
-router.post('/', async (req, res) => {
+router.post('/', async (req: express.Request, res: express.Response) => {
 	try {
-		const { name, teacherId, subjectId, capacity, description, status, bannerUrl, bannerClPubId } = req.body;
+		const { name, teacherId, subjectId, capacity, description, status, bannerUrl, bannerCldPubId } = req.body;
+
+		// Validazione campi obbligatori
+		if (!name || typeof name !== 'string') {
+			res.status(400).json({ error: "Name is required" });
+			return;
+		}
+		if (!teacherId || typeof teacherId !== 'string') {
+			res.status(400).json({ error: "Teacher is required" });
+			return;
+		}
+		if (!subjectId || typeof subjectId !== 'number') {
+			res.status(400).json({ error: "Subject is required" });
+			return;
+		}
+		if (!capacity || typeof capacity !== 'number' || capacity < 1) {
+			res.status(400).json({ error: "Valid capacity is required" });
+			return;
+		}
+		if (!description || typeof description !== 'string') {
+			res.status(400).json({ error: "Description is required" });
+			return;
+		}
+		if (status && !STATUS_VALUES.includes(status as (typeof STATUS_VALUES)[number])) {
+			res.status(400).json({ error: "Invalid status" });
+			return;
+		}
 
 		const [createdClass] = await db.insert(classes)
-		.values({...req.body, inviteCode: Math.random().toString(36).substring(2, 9), schedules: []})
-		.returning({ id: classes.id })
+			.values({
+				name,
+				teacherId,
+				subjectId,
+				capacity,
+				description,
+				status,
+				bannerUrl,
+				bannerCldPubId,
+				inviteCode: Math.random().toString(36).substring(2, 9),
+				schedules: [],
+			})
+			.returning({ id: classes.id })
 
-		if (!createdClass) throw Error;
+		if (!createdClass) {
+			res.status(500).json({ error: "Failed to create class" });
+			return;
+		}
 
 		res.status(201).json({ data: createdClass })
 	} catch(e) {
 		console.error(e);
-		res.status(500).json({error: e})
+		res.status(500).json({ error: "Internal server error" })
 	}
 })
 

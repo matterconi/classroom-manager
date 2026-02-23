@@ -99,4 +99,42 @@ router.get("/", async (req: express.Request, res: express.Response) => {
   }
 });
 
+router.post("/", async (req: express.Request, res: express.Response) => {
+  try {
+    const { name, code, description, departmentId } = req.body;
+
+    if (!name || typeof name !== "string") {
+      res.status(400).json({ error: "Name is required" });
+      return;
+    }
+    if (!code || typeof code !== "string") {
+      res.status(400).json({ error: "Code is required" });
+      return;
+    }
+    if (!description || typeof description !== "string") {
+      res.status(400).json({ error: "Description is required" });
+      return;
+    }
+    if (!departmentId || typeof departmentId !== "number") {
+      res.status(400).json({ error: "Department is required" });
+      return;
+    }
+
+    const [createdSubject] = await db
+      .insert(subjects)
+      .values({ name, code, description, departmentId })
+      .returning({ id: subjects.id });
+
+    if (!createdSubject) {
+      res.status(500).json({ error: "Failed to create subject" });
+      return;
+    }
+
+    res.status(201).json({ data: createdSubject });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 export default router;
