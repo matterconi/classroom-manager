@@ -94,6 +94,40 @@ router.get('/', async (req, res) => {
 	}
 })
 
+router.get('/:id', async (req, res) => {
+	try {
+		const classId = parseInt(req.params.id, 10);
+		if (isNaN(classId) || classId < 1) {
+			res.status(400).json({ message: "Ivalid id" });
+			return;
+		}
+
+		// TODO: query con eq(classes.id, classId) e join come nella lista
+		const classResult = await db
+			.select({
+				...getTableColumns(classes),
+				subject: { ...getTableColumns(subjects) },
+				teacher: {name: user.name, email: user.email}
+			})
+			.from(classes)
+			.leftJoin(subjects, eq(subjects.id, classes.subjectId))	
+			.leftJoin(user, eq(user.id, classes.teacherId))	
+			.where(eq(classes.id, classId))
+		
+		const record = classResult[0];
+		if(!record) {
+			res.status(404).json({message: "we got an error"});
+			return
+		}
+		return res.status(200).json({data: record});
+
+
+	} catch(e) {
+		console.error(e);
+		res.status(500).json({message: "something went wrong"});
+	}
+})
+
 router.post('/', async (req: express.Request, res: express.Response) => {
 	try {
 		const { name, teacherId, subjectId, capacity, description, status, bannerUrl, bannerCldPubId } = req.body;

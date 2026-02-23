@@ -7,6 +7,7 @@ import { Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@radix-ui/react-select";
 import { CreateButton } from "@/components/refine-ui/buttons/create";
+import { ShowButton } from "@/components/refine-ui/buttons/show";
 import { DataTable } from "@/components/refine-ui/data-table/data-table";
 import { ColumnDef } from "@tanstack/react-table";
 import { Badge } from "@/components/ui/badge";
@@ -99,6 +100,19 @@ const classesTable = useTable<ClassDetails>({
           <span className="text-foreground line-clamp-2 truncate">
             {getValue<string>()}
           </span>
+        ),
+      },
+      {
+        id: "actions",
+        header: () => <p className="column-title">Actions</p>,
+        size: 100,
+        cell: ({ row }) => (
+          <ShowButton
+            resource="classes"
+            recordItemId={row.original.id}
+            size="sm"
+            variant="ghost"
+          />
         ),
       },
     ],

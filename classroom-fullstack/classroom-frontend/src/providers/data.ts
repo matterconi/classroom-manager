@@ -60,6 +60,17 @@ const options: CreateDataProviderOptions = {
     },
   },
 
+
+  getOne: {
+    getEndpoint: ({ resource, id }) => `api/${resource}/${id}`,
+
+    mapResponse: async (response) => {
+      if (!response.ok) throw await buildHttpError(response);
+      const json = await response.json() as { data: unknown };
+      return json.data;
+    },
+  },
+
   create: {
     getEndpoint: ({ resource }) => `api/${resource}`,
 
