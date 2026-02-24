@@ -30,16 +30,34 @@ const options: CreateDataProviderOptions = {
       const page = pagination?.currentPage ?? 1;
       const pageSize = pagination?.pageSize ?? 10;
 
-      const params: Record<string, string | number> = { page, limit: pageSize };
+      const params: Record<string, string | number> = {
+        page,
+        limit: pageSize,
+      };
 
       filters?.forEach((filter) => {
         const field = "field" in filter ? filter.field : "";
-
         const value = String(filter.value);
 
-        if (resource === "subjects") {
-          if (field === "department") params.department = value;
-          if (field === "name" || field === "code") params.search = value;
+        if (resource === "components") {
+          if (field === "name") params.search = value;
+          if (field === "status") params.status = value;
+          if (field === "stack") params.stack = value;
+          if (field === "categoryId") params.categoryId = value;
+          if (field === "library") params.library = value;
+          if (field === "language") params.language = value;
+        }
+
+        if (resource === "collections") {
+          if (field === "name") params.search = value;
+          if (field === "status") params.status = value;
+          if (field === "stack") params.stack = value;
+          if (field === "categoryId") params.categoryId = value;
+          if (field === "library") params.library = value;
+        }
+
+        if (resource === "categories") {
+          if (field === "name") params.search = value;
         }
       });
       return params;
@@ -60,13 +78,12 @@ const options: CreateDataProviderOptions = {
     },
   },
 
-
   getOne: {
     getEndpoint: ({ resource, id }) => `api/${resource}/${id}`,
 
     mapResponse: async (response) => {
       if (!response.ok) throw await buildHttpError(response);
-      const json = await response.json() as { data: unknown };
+      const json = (await response.json()) as { data: unknown };
       return json.data;
     },
   },

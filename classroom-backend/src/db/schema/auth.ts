@@ -8,7 +8,6 @@ import {
   timestamp,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
-import { classes, enrollments } from "./app.js";
 
 // ── Enums ──────────────────────────────────────────────────────────────────────
 
@@ -104,8 +103,6 @@ export const verification = pgTable(
 export const userRelations = relations(user, ({ many }) => ({
   sessions: many(session),
   accounts: many(account),
-  taughtClasses: many(classes),
-  enrollments: many(enrollments),
 }));
 
 export const sessionRelations = relations(session, ({ one }) => ({

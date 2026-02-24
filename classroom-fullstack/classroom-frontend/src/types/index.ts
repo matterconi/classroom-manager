@@ -1,10 +1,58 @@
-export type Subject = {
+export type Category = {
   id: number;
   name: string;
-  code: string;
-  description: string;
-  department: string;
+  slug: string;
+  description?: string;
+  icon?: string;
   createdAt?: string;
+};
+
+export type Component = {
+  id: number;
+  categoryId?: number;
+  name: string;
+  slug: string;
+  description?: string;
+  code: string;
+  language?: string;
+  stack?: "frontend" | "backend";
+  libraries?: string[];
+  tags?: string[];
+  documentation?: string;
+  demoUrl?: string;
+  status: "draft" | "published" | "archived";
+  category?: Category;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+export type Collection = {
+  id: number;
+  categoryId?: number;
+  name: string;
+  slug: string;
+  description?: string;
+  stack?: "frontend" | "backend" | "fullstack";
+  libraries?: string[];
+  tags?: string[];
+  documentation?: string;
+  status: "draft" | "published" | "archived";
+  category?: Category;
+  filesCount?: number;
+  files?: CollectionFile[];
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+export type CollectionFile = {
+  id: number;
+  collectionId: number;
+  name: string;
+  code: string;
+  language?: string;
+  order: number;
+  createdAt?: string;
+  updatedAt?: string;
 };
 
 export type ListResponse<T = unknown> = {
@@ -25,46 +73,6 @@ export type GetOneResponse<T = unknown> = {
   data?: T;
 };
 
-declare global {
-  interface CloudinaryUploadWidgetResults {
-    event: string;
-    info: {
-      secure_url: string;
-      public_id: string;
-      delete_token?: string;
-      resource_type: string;
-      original_filename: string;
-    };
-  }
-
-  interface CloudinaryWidget {
-    open: () => void;
-  }
-
-  interface Window {
-    cloudinary?: {
-      createUploadWidget: (
-        options: Record<string, unknown>,
-        callback: (
-          error: unknown,
-          result: CloudinaryUploadWidgetResults
-        ) => void
-      ) => CloudinaryWidget;
-    };
-  }
-}
-
-export interface UploadWidgetValue {
-  url: string;
-  publicId: string;
-}
-
-export interface UploadWidgetProps {
-  value?: UploadWidgetValue | null;
-  onChange?: (value: UploadWidgetValue | null) => void;
-  disabled?: boolean;
-}
-
 export enum UserRole {
   STUDENT = "student",
   TEACHER = "teacher",
@@ -80,43 +88,4 @@ export type User = {
   role: UserRole;
   image?: string;
   imageCldPubId?: string;
-  department?: string;
-};
-
-export type Schedule = {
-  day: string;
-  startTime: string;
-  endTime: string;
-};
-
-export type Department = {
-  id: number;
-  name: string;
-  description: string;
-};
-
-export type ClassDetails = {
-  id: number;
-  name: string;
-  description: string;
-  status: "active" | "inactive";
-  capacity: number;
-  courseCode: string;
-  courseName: string;
-  bannerUrl?: string;
-  bannerCldPubId?: string;
-  subject?: Subject;
-  teacher?: User;
-  department?: Department;
-  schedules: Schedule[];
-  inviteCode?: string;
-};
-
-export type SignUpPayload = {
-  email: string;
-  name: string;
-  password: string;
-  image?: string;
-  imageCldPubId?: string;
-  role: UserRole;
 };

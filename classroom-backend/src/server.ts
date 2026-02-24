@@ -3,10 +3,10 @@ import express, { type Request, type Response } from "express";
 import cors from "cors";
 import { toNodeHandler } from "better-auth/node";
 import { auth } from "./lib/auth.js";
-import subjectRouter from "./db/routes/subjects.js";
+import categoryRouter from "./db/routes/categories.js";
+import componentRouter from "./db/routes/components.js";
+import collectionRouter from "./db/routes/collections.js";
 import userRouter from "./db/routes/users.js";
-import classRouter from "./db/routes/classes.js";
-import departmentRouter from "./db/routes/departments.js";
 import securityMiddleware from "./middleware/security.js";
 
 const app = express();
@@ -25,13 +25,13 @@ app.use(
 
 app.use(securityMiddleware);
 
-app.use("/api/subjects", subjectRouter);
+app.use("/api/categories", categoryRouter);
+app.use("/api/components", componentRouter);
+app.use("/api/collections", collectionRouter);
 app.use("/api/users", userRouter);
-app.use("/api/classes", classRouter);
-app.use("/api/departments", departmentRouter);
 
 app.get("/", (_req: Request, res: Response) => {
-  res.json({ message: "Classroom Backend API" });
+  res.json({ message: "Component Library API" });
 });
 
 app.listen(PORT, "0.0.0.0", () => {

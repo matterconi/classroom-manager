@@ -8,9 +8,7 @@ import {
   pgEnum,
   timestamp,
   index,
-  unique,
 } from "drizzle-orm/pg-core";
-import { user } from "./auth.js";
 
 // ── Shared timestamps ──────────────────────────────────────────────────────────
 
@@ -24,143 +22,140 @@ const timestamps = {
 
 // ── Enums ──────────────────────────────────────────────────────────────────────
 
-export const classStatusEnum = pgEnum("class_status", [
-  "active",
-  "inactive",
+export const componentStatusEnum = pgEnum("component_status", [
+  "draft",
+  "published",
   "archived",
 ]);
 
-// ── Schedule type ──────────────────────────────────────────────────────────────
+export const stackEnum = pgEnum("stack", ["frontend", "backend"]);
 
-export type Schedule = {
-  day: string;
-  startTime: string;
-  endTime: string;
-  room?: string;
-};
+export const collectionStackEnum = pgEnum("collection_stack", [
+  "frontend",
+  "backend",
+  "fullstack",
+]);
 
-// ── Departments ────────────────────────────────────────────────────────────────
+// ── Categories ────────────────────────────────────────────────────────────────
 
-export const departments = pgTable("departments", {
+export const categories = pgTable("categories", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
-  code: varchar("code", { length: 50 }).notNull().unique(),
   name: varchar("name", { length: 255 }).notNull().unique(),
-  description: varchar("description", { length: 255 }),
+  slug: varchar("slug", { length: 255 }).notNull().unique(),
+  description: text("description"),
+  icon: varchar("icon", { length: 100 }),
   ...timestamps,
 });
 
-// ── Subjects ───────────────────────────────────────────────────────────────────
+// ── Components ────────────────────────────────────────────────────────────────
 
-export const subjects = pgTable("subjects", {
-  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
-  departmentId: integer("department_id")
-    .notNull()
-    .references(() => departments.id, { onDelete: "restrict" }),
-  code: varchar("code", { length: 50 }).notNull().unique(),
-  name: varchar("name", { length: 255 }).notNull().unique(),
-  description: varchar("description", { length: 255 }),
-  ...timestamps,
-});
-
-// ── Classes ────────────────────────────────────────────────────────────────────
-
-export const classes = pgTable(
-  "classes",
+export const components = pgTable(
+  "components",
   {
     id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
-    subjectId: integer("subject_id")
-      .notNull()
-      .references(() => subjects.id, { onDelete: "cascade" }),
-    teacherId: text("teacher_id")
-      .notNull()
-      .references(() => user.id, { onDelete: "restrict" }),
-    inviteCode: varchar("invite_code", { length: 255 }).notNull().unique(),
+    categoryId: integer("category_id").references(() => categories.id, {
+      onDelete: "set null",
+    }),
     name: varchar("name", { length: 255 }).notNull(),
-    bannerCldPubId: text("banner_cld_pub_id"),
-    bannerUrl: text("banner_url"),
+    slug: varchar("slug", { length: 255 }).notNull().unique(),
     description: text("description"),
-    capacity: integer("capacity").default(50).notNull(),
-    status: classStatusEnum("status").default("active").notNull(),
-    schedules: jsonb("schedules").$type<Schedule[]>().default([]).notNull(),
+    code: text("code").notNull(),
+    language: varchar("language", { length: 50 }),
+    stack: stackEnum("stack"),
+    libraries: jsonb("libraries").$type<string[]>(),
+    tags: jsonb("tags").$type<string[]>(),
+    documentation: text("documentation"),
+    demoUrl: text("demo_url"),
+    status: componentStatusEnum("status").default("draft").notNull(),
     ...timestamps,
   },
-  (table) => [
-    index("classes_subject_id_idx").on(table.subjectId),
-    index("classes_teacher_id_idx").on(table.teacherId),
-  ],
+  (table) => [index("components_category_id_idx").on(table.categoryId)],
 );
 
-// ── Enrollments ────────────────────────────────────────────────────────────────
+// ── Collections ───────────────────────────────────────────────────────────────
 
-export const enrollments = pgTable(
-  "enrollments",
+export const collections = pgTable(
+  "collections",
   {
     id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
-    studentId: text("student_id")
+    categoryId: integer("category_id").references(() => categories.id, {
+      onDelete: "set null",
+    }),
+    name: varchar("name", { length: 255 }).notNull(),
+    slug: varchar("slug", { length: 255 }).notNull().unique(),
+    description: text("description"),
+    stack: collectionStackEnum("stack"),
+    libraries: jsonb("libraries").$type<string[]>(),
+    tags: jsonb("tags").$type<string[]>(),
+    documentation: text("documentation"),
+    status: componentStatusEnum("status").default("draft").notNull(),
+    ...timestamps,
+  },
+  (table) => [index("collections_category_id_idx").on(table.categoryId)],
+);
+
+// ── Collection Files ──────────────────────────────────────────────────────────
+
+export const collectionFiles = pgTable(
+  "collection_files",
+  {
+    id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+    collectionId: integer("collection_id")
       .notNull()
-      .references(() => user.id, { onDelete: "cascade" }),
-    classId: integer("class_id")
-      .notNull()
-      .references(() => classes.id, { onDelete: "cascade" }),
+      .references(() => collections.id, { onDelete: "cascade" }),
+    name: varchar("name", { length: 255 }).notNull(),
+    code: text("code").notNull(),
+    language: varchar("language", { length: 50 }),
+    order: integer("order").default(0).notNull(),
     ...timestamps,
   },
   (table) => [
-    unique("enrollments_student_class_unique").on(
-      table.studentId,
-      table.classId,
-    ),
-    index("enrollments_student_id_idx").on(table.studentId),
-    index("enrollments_class_id_idx").on(table.classId),
+    index("collection_files_collection_id_idx").on(table.collectionId),
   ],
 );
 
 // ── Relations ──────────────────────────────────────────────────────────────────
 
-export const departmentRelations = relations(departments, ({ many }) => ({
-  subjects: many(subjects),
+export const categoryRelations = relations(categories, ({ many }) => ({
+  components: many(components),
+  collections: many(collections),
 }));
 
-export const subjectRelations = relations(subjects, ({ one, many }) => ({
-  department: one(departments, {
-    fields: [subjects.departmentId],
-    references: [departments.id],
+export const componentRelations = relations(components, ({ one }) => ({
+  category: one(categories, {
+    fields: [components.categoryId],
+    references: [categories.id],
   }),
-  classes: many(classes),
 }));
 
-export const classRelations = relations(classes, ({ one, many }) => ({
-  subject: one(subjects, {
-    fields: [classes.subjectId],
-    references: [subjects.id],
+export const collectionRelations = relations(collections, ({ one, many }) => ({
+  category: one(categories, {
+    fields: [collections.categoryId],
+    references: [categories.id],
   }),
-  teacher: one(user, {
-    fields: [classes.teacherId],
-    references: [user.id],
-  }),
-  enrollments: many(enrollments),
+  files: many(collectionFiles),
 }));
 
-export const enrollmentRelations = relations(enrollments, ({ one }) => ({
-  student: one(user, {
-    fields: [enrollments.studentId],
-    references: [user.id],
+export const collectionFileRelations = relations(
+  collectionFiles,
+  ({ one }) => ({
+    collection: one(collections, {
+      fields: [collectionFiles.collectionId],
+      references: [collections.id],
+    }),
   }),
-  class: one(classes, {
-    fields: [enrollments.classId],
-    references: [classes.id],
-  }),
-}));
+);
 
 // ── Type exports ───────────────────────────────────────────────────────────────
 
-export type Department = typeof departments.$inferSelect;
-export type NewDepartment = typeof departments.$inferInsert;
+export type Category = typeof categories.$inferSelect;
+export type NewCategory = typeof categories.$inferInsert;
 
-export type Subject = typeof subjects.$inferSelect;
-export type NewSubject = typeof subjects.$inferInsert;
+export type Component = typeof components.$inferSelect;
+export type NewComponent = typeof components.$inferInsert;
 
-export type Class = typeof classes.$inferSelect;
-export type NewClass = typeof classes.$inferInsert;
+export type Collection = typeof collections.$inferSelect;
+export type NewCollection = typeof collections.$inferInsert;
 
-export type Enrollment = typeof enrollments.$inferSelect;
-export type NewEnrollment = typeof enrollments.$inferInsert;
+export type CollectionFile = typeof collectionFiles.$inferSelect;
+export type NewCollectionFile = typeof collectionFiles.$inferInsert;

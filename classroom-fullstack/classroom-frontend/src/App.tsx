@@ -1,4 +1,4 @@
-import { GitHubBanner, Refine } from "@refinedev/core";
+import { Refine } from "@refinedev/core";
 import { DevtoolsPanel, DevtoolsProvider } from "@refinedev/devtools";
 import { RefineKbar, RefineKbarProvider } from "@refinedev/kbar";
 
@@ -12,19 +12,21 @@ import { Toaster } from "./components/refine-ui/notification/toaster";
 import { useNotificationProvider } from "./components/refine-ui/notification/use-notification-provider";
 import { ThemeProvider } from "./components/refine-ui/theme/theme-provider";
 import { dataProvider } from "./providers/data";
-import { BookOpen, GraduationCap, Home } from "lucide-react";
+import { Home, Code2, FolderOpen, Tag } from "lucide-react";
 import { Layout } from "./components/refine-ui/layout/layout";
 import DashBoard from "./pages/dashboard";
-import SubjectList from "./pages/subjects/list";
-import ClassesList from "./pages/classes/list";
-import SubjectCreate from "./pages/subjects/create";
-import ClassesCreate from "./pages/classes/create";
-import ClassesShow from "./pages/classes/show";
+import ComponentsList from "./pages/components/list";
+import ComponentCreate from "./pages/components/create";
+import ComponentShow from "./pages/components/show";
+import CollectionsList from "./pages/collections/list";
+import CollectionCreate from "./pages/collections/create";
+import CollectionShow from "./pages/collections/show";
+import CategoriesList from "./pages/categories/list";
+import CategoryCreate from "./pages/categories/create";
 
 function App() {
   return (
     <BrowserRouter>
-      <GitHubBanner />
       <RefineKbarProvider>
         <ThemeProvider>
           <DevtoolsProvider>
@@ -44,17 +46,24 @@ function App() {
                   meta: { label: "Home", icon: <Home /> },
                 },
                 {
-                  name: "subjects",
-                  list: "/subjects",
-                  create: "/subjects/create",
-                  meta: { label: "Subjects", icon: <BookOpen /> },
+                  name: "components",
+                  list: "/components",
+                  create: "/components/create",
+                  show: "/components/show/:id",
+                  meta: { label: "Components", icon: <Code2 /> },
                 },
                 {
-                  name: "classes",
-                  list: "/classes",
-                  create: "/classes/create",
-                  show: "/classes/show/:id",
-                  meta: { label: "Classes", icon: <GraduationCap /> },
+                  name: "collections",
+                  list: "/collections",
+                  create: "/collections/create",
+                  show: "/collections/show/:id",
+                  meta: { label: "Collections", icon: <FolderOpen /> },
+                },
+                {
+                  name: "categories",
+                  list: "/categories",
+                  create: "/categories/create",
+                  meta: { label: "Categories", icon: <Tag /> },
                 },
               ]}
             >
@@ -68,14 +77,21 @@ function App() {
                 >
                   <Route path="/" element={<DashBoard />} />
 
-                  <Route path="subjects">
-                    <Route index element={<SubjectList />} />
-                    <Route path="create" element={<SubjectCreate />} />
+                  <Route path="components">
+                    <Route index element={<ComponentsList />} />
+                    <Route path="create" element={<ComponentCreate />} />
+                    <Route path="show/:id" element={<ComponentShow />} />
                   </Route>
-                  <Route path="classes">
-                    <Route index element={<ClassesList />} />
-                    <Route path="create" element={<ClassesCreate />} />
-                    <Route path="show/:id" element={<ClassesShow />} />
+
+                  <Route path="collections">
+                    <Route index element={<CollectionsList />} />
+                    <Route path="create" element={<CollectionCreate />} />
+                    <Route path="show/:id" element={<CollectionShow />} />
+                  </Route>
+
+                  <Route path="categories">
+                    <Route index element={<CategoriesList />} />
+                    <Route path="create" element={<CategoryCreate />} />
                   </Route>
                 </Route>
               </Routes>
