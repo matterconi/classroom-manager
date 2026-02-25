@@ -8,6 +8,8 @@ import componentRouter from "./db/routes/components.js";
 import collectionRouter from "./db/routes/collections.js";
 import snippetRouter from "./db/routes/snippets.js";
 import userRouter from "./db/routes/users.js";
+import theoryRouter from "./db/routes/theory.js";
+import aiRouter from './db/routes/ai.js'
 import securityMiddleware from "./middleware/security.js";
 
 const app = express();
@@ -30,7 +32,9 @@ app.use("/api/categories", categoryRouter);
 app.use("/api/components", componentRouter);
 app.use("/api/collections", collectionRouter);
 app.use("/api/snippets", snippetRouter);
+app.use("/api/theory", theoryRouter);
 app.use("/api/users", userRouter);
+app.use("/api/ai", aiRouter)
 
 app.get("/", (_req: Request, res: Response) => {
   res.json({ message: "La Bottega UI — API" });

@@ -193,7 +193,6 @@ router.post("/", async (req: express.Request, res: express.Response) => {
       stack,
       libraries,
       tags,
-      documentation,
       entryFile,
       status,
       files,
@@ -232,7 +231,6 @@ router.post("/", async (req: express.Request, res: express.Response) => {
         stack: stack || null,
         libraries: libraries || null,
         tags: tags || null,
-        documentation: documentation || null,
         entryFile: entryFile || null,
         status: status || "draft",
       })

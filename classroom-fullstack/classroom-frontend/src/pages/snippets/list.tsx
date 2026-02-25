@@ -19,15 +19,15 @@ import { useTable } from "@refinedev/react-table";
 import { useList } from "@refinedev/core";
 import type { Snippet, Category } from "@/types";
 import {
-  SNIPPET_TYPE_OPTIONS,
-  COMPLEXITY_OPTIONS,
+  DOMAIN_OPTIONS,
+  SNIPPET_STACK_OPTIONS,
   STATUS_OPTIONS,
 } from "@/constants";
 
 const SnippetsList = () => {
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedType, setSelectedType] = useState("all");
-  const [selectedComplexity, setSelectedComplexity] = useState("all");
+  const [selectedDomain, setSelectedDomain] = useState("all");
+  const [selectedStack, setSelectedStack] = useState("all");
   const [selectedStatus, setSelectedStatus] = useState("all");
   const [selectedCategory, setSelectedCategory] = useState("all");
 
@@ -41,17 +41,11 @@ const SnippetsList = () => {
     ...(searchQuery
       ? [{ field: "name", operator: "contains" as const, value: searchQuery }]
       : []),
-    ...(selectedType !== "all"
-      ? [{ field: "type", operator: "eq" as const, value: selectedType }]
+    ...(selectedDomain !== "all"
+      ? [{ field: "domain", operator: "eq" as const, value: selectedDomain }]
       : []),
-    ...(selectedComplexity !== "all"
-      ? [
-          {
-            field: "complexity",
-            operator: "eq" as const,
-            value: selectedComplexity,
-          },
-        ]
+    ...(selectedStack !== "all"
+      ? [{ field: "stack", operator: "eq" as const, value: selectedStack }]
       : []),
     ...(selectedStatus !== "all"
       ? [{ field: "status", operator: "eq" as const, value: selectedStatus }]
@@ -82,17 +76,43 @@ const SnippetsList = () => {
           ),
         },
         {
-          id: "type",
-          accessorKey: "type",
+          id: "domain",
+          accessorKey: "domain",
           size: 130,
-          header: () => <p className="column-title">Type</p>,
+          header: () => <p className="column-title">Domain</p>,
           cell: ({ getValue }) => {
             const val = getValue<string>();
             if (!val) return <span>—</span>;
             const label =
-              SNIPPET_TYPE_OPTIONS.find((o) => o.value === val)?.label ?? val;
+              DOMAIN_OPTIONS.find((o) => o.value === val)?.label ?? val;
             return <Badge variant="secondary">{label}</Badge>;
           },
+        },
+        {
+          id: "stack",
+          accessorKey: "stack",
+          size: 100,
+          header: () => <p className="column-title">Stack</p>,
+          cell: ({ getValue }) => {
+            const val = getValue<string>();
+            if (!val) return <span>—</span>;
+            return (
+              <Badge variant={val === "frontend" ? "default" : "outline"}>
+                {val}
+              </Badge>
+            );
+          },
+        },
+        {
+          id: "language",
+          accessorKey: "language",
+          size: 100,
+          header: () => <p className="column-title">Language</p>,
+          cell: ({ getValue }) => (
+            <span className="text-muted-foreground font-mono text-sm">
+              {(getValue() as string) || "—"}
+            </span>
+          ),
         },
         {
           id: "category",
@@ -103,22 +123,6 @@ const SnippetsList = () => {
             const val = getValue<string>();
             return val ? (
               <Badge variant="outline">{val}</Badge>
-            ) : (
-              <span>—</span>
-            );
-          },
-        },
-        {
-          id: "complexity",
-          accessorKey: "complexity",
-          size: 100,
-          header: () => <p className="column-title">Complexity</p>,
-          cell: ({ getValue }) => {
-            const val = getValue<string>();
-            return val ? (
-              <Badge variant="secondary" className="font-mono">
-                {val}
-              </Badge>
             ) : (
               <span>—</span>
             );
@@ -180,13 +184,13 @@ const SnippetsList = () => {
             />
           </div>
           <div className="flex w-full flex-wrap gap-2 sm:w-auto">
-            <Select value={selectedType} onValueChange={setSelectedType}>
+            <Select value={selectedDomain} onValueChange={setSelectedDomain}>
               <SelectTrigger className="w-[150px]">
-                <SelectValue placeholder="Type" />
+                <SelectValue placeholder="Domain" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All Types</SelectItem>
-                {SNIPPET_TYPE_OPTIONS.map((opt) => (
+                <SelectItem value="all">All Domains</SelectItem>
+                {DOMAIN_OPTIONS.map((opt) => (
                   <SelectItem value={opt.value} key={opt.value}>
                     {opt.label}
                   </SelectItem>
@@ -194,16 +198,13 @@ const SnippetsList = () => {
               </SelectContent>
             </Select>
 
-            <Select
-              value={selectedComplexity}
-              onValueChange={setSelectedComplexity}
-            >
+            <Select value={selectedStack} onValueChange={setSelectedStack}>
               <SelectTrigger className="w-[130px]">
-                <SelectValue placeholder="Complexity" />
+                <SelectValue placeholder="Stack" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All</SelectItem>
-                {COMPLEXITY_OPTIONS.map((opt) => (
+                <SelectItem value="all">All Stacks</SelectItem>
+                {SNIPPET_STACK_OPTIONS.map((opt) => (
                   <SelectItem value={opt.value} key={opt.value}>
                     {opt.label}
                   </SelectItem>

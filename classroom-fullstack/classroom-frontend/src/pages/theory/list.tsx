@@ -17,12 +17,17 @@ import { Badge } from "@/components/ui/badge";
 import { ColumnDef } from "@tanstack/react-table";
 import { useTable } from "@refinedev/react-table";
 import { useList } from "@refinedev/core";
-import type { Component, Category } from "@/types";
-import { ELEMENT_OPTIONS, STATUS_OPTIONS } from "@/constants";
+import type { Theory, Category } from "@/types";
+import {
+  THEORY_TYPE_OPTIONS,
+  COMPLEXITY_OPTIONS,
+  STATUS_OPTIONS,
+} from "@/constants";
 
-const ComponentsList = () => {
+const TheoryList = () => {
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedElement, setSelectedElement] = useState("all");
+  const [selectedType, setSelectedType] = useState("all");
+  const [selectedComplexity, setSelectedComplexity] = useState("all");
   const [selectedStatus, setSelectedStatus] = useState("all");
   const [selectedCategory, setSelectedCategory] = useState("all");
 
@@ -36,8 +41,17 @@ const ComponentsList = () => {
     ...(searchQuery
       ? [{ field: "name", operator: "contains" as const, value: searchQuery }]
       : []),
-    ...(selectedElement !== "all"
-      ? [{ field: "element", operator: "eq" as const, value: selectedElement }]
+    ...(selectedType !== "all"
+      ? [{ field: "type", operator: "eq" as const, value: selectedType }]
+      : []),
+    ...(selectedComplexity !== "all"
+      ? [
+          {
+            field: "complexity",
+            operator: "eq" as const,
+            value: selectedComplexity,
+          },
+        ]
       : []),
     ...(selectedStatus !== "all"
       ? [{ field: "status", operator: "eq" as const, value: selectedStatus }]
@@ -53,8 +67,8 @@ const ComponentsList = () => {
       : []),
   ];
 
-  const componentsTable = useTable<Component>({
-    columns: useMemo<ColumnDef<Component>[]>(
+  const theoryTable = useTable<Theory>({
+    columns: useMemo<ColumnDef<Theory>[]>(
       () => [
         {
           id: "name",
@@ -68,13 +82,32 @@ const ComponentsList = () => {
           ),
         },
         {
-          id: "element",
-          accessorKey: "element",
-          size: 100,
-          header: () => <p className="column-title">Element</p>,
+          id: "type",
+          accessorKey: "type",
+          size: 130,
+          header: () => <p className="column-title">Type</p>,
           cell: ({ getValue }) => {
             const val = getValue<string>();
-            return val ? <Badge variant="outline">{val}</Badge> : <span>—</span>;
+            if (!val) return <span>—</span>;
+            const label =
+              THEORY_TYPE_OPTIONS.find((o) => o.value === val)?.label ?? val;
+            return <Badge variant="secondary">{label}</Badge>;
+          },
+        },
+        {
+          id: "complexity",
+          accessorKey: "complexity",
+          size: 100,
+          header: () => <p className="column-title">Complexity</p>,
+          cell: ({ getValue }) => {
+            const val = getValue<string>();
+            return val ? (
+              <Badge variant="secondary" className="font-mono">
+                {val}
+              </Badge>
+            ) : (
+              <span>—</span>
+            );
           },
         },
         {
@@ -84,30 +117,10 @@ const ComponentsList = () => {
           header: () => <p className="column-title">Category</p>,
           cell: ({ getValue }) => {
             const val = getValue<string>();
-            return val ? <Badge variant="secondary">{val}</Badge> : <span>—</span>;
-          },
-        },
-        {
-          id: "libraries",
-          accessorKey: "libraries",
-          size: 200,
-          header: () => <p className="column-title">Libraries</p>,
-          cell: ({ getValue }) => {
-            const libs = getValue<string[]>();
-            if (!libs || libs.length === 0) return <span>—</span>;
-            return (
-              <div className="flex flex-wrap gap-1">
-                {libs.slice(0, 3).map((lib) => (
-                  <Badge key={lib} variant="secondary" className="text-xs">
-                    {lib}
-                  </Badge>
-                ))}
-                {libs.length > 3 && (
-                  <Badge variant="secondary" className="text-xs">
-                    +{libs.length - 3}
-                  </Badge>
-                )}
-              </div>
+            return val ? (
+              <Badge variant="outline">{val}</Badge>
+            ) : (
+              <span>—</span>
             );
           },
         },
@@ -124,7 +137,7 @@ const ComponentsList = () => {
           size: 100,
           cell: ({ row }) => (
             <ShowButton
-              resource="components"
+              resource="theory"
               recordItemId={row.original.id}
               size="sm"
               variant="ghost"
@@ -135,7 +148,7 @@ const ComponentsList = () => {
       [],
     ),
     refineCoreProps: {
-      resource: "components",
+      resource: "theory",
       pagination: {
         pageSize: 10,
         mode: "server",
@@ -152,7 +165,7 @@ const ComponentsList = () => {
   return (
     <ListView>
       <Breadcrumb />
-      <h1 className="page-title">Components</h1>
+      <h1 className="page-title">Theory</h1>
 
       <div className="intro-row">
         <div className="actions-row">
@@ -167,13 +180,30 @@ const ComponentsList = () => {
             />
           </div>
           <div className="flex w-full flex-wrap gap-2 sm:w-auto">
-            <Select value={selectedElement} onValueChange={setSelectedElement}>
-              <SelectTrigger className="w-[130px]">
-                <SelectValue placeholder="Element" />
+            <Select value={selectedType} onValueChange={setSelectedType}>
+              <SelectTrigger className="w-[150px]">
+                <SelectValue placeholder="Type" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All Elements</SelectItem>
-                {ELEMENT_OPTIONS.map((opt) => (
+                <SelectItem value="all">All Types</SelectItem>
+                {THEORY_TYPE_OPTIONS.map((opt) => (
+                  <SelectItem value={opt.value} key={opt.value}>
+                    {opt.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <Select
+              value={selectedComplexity}
+              onValueChange={setSelectedComplexity}
+            >
+              <SelectTrigger className="w-[130px]">
+                <SelectValue placeholder="Complexity" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All</SelectItem>
+                {COMPLEXITY_OPTIONS.map((opt) => (
                   <SelectItem value={opt.value} key={opt.value}>
                     {opt.label}
                   </SelectItem>
@@ -217,9 +247,9 @@ const ComponentsList = () => {
         </div>
       </div>
 
-      <DataTable table={componentsTable} />
+      <DataTable table={theoryTable} />
     </ListView>
   );
 };
 
-export default ComponentsList;
+export default TheoryList;

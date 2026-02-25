@@ -6,21 +6,17 @@ import {
   and,
   sql,
   desc,
-  asc,
   getTableColumns,
 } from "drizzle-orm";
 import { db } from "../index.js";
-import {
-  components,
-  componentFiles,
-  categories,
-} from "../schema/index.js";
+import { theory, categories } from "../schema/index.js";
 
 const LIMIT_MAX = 100;
 const SEARCH_MAX_LENGTH = 100;
 const SEARCH_PATTERN = /^[\p{L}\p{N}\s\-.,]+$/u;
 
 const STATUS_VALUES = ["draft", "published", "archived"] as const;
+const TYPE_VALUES = ["algorithm", "data-structure", "design-pattern"] as const;
 
 const router = express.Router();
 
@@ -33,9 +29,9 @@ router.get("/", async (req: express.Request, res: express.Response) => {
     const {
       search,
       status,
-      element,
+      type,
+      complexity,
       categoryId,
-      library,
       page = 1,
       limit = 10,
     } = req.query;
@@ -61,8 +57,8 @@ router.get("/", async (req: express.Request, res: express.Response) => {
       }
       filterConditions.push(
         or(
-          ilike(components.name, `%${trimmedSearch}%`),
-          ilike(components.description, `%${trimmedSearch}%`),
+          ilike(theory.name, `%${trimmedSearch}%`),
+          ilike(theory.description, `%${trimmedSearch}%`),
         ),
       );
     }
@@ -73,16 +69,26 @@ router.get("/", async (req: express.Request, res: express.Response) => {
         return;
       }
       filterConditions.push(
-        eq(components.status, status as (typeof STATUS_VALUES)[number]),
+        eq(theory.status, status as (typeof STATUS_VALUES)[number]),
       );
     }
 
-    if (element) {
-      if (typeof element !== "string") {
-        res.status(400).json({ error: "Invalid element" });
+    if (type) {
+      if (!TYPE_VALUES.includes(type as (typeof TYPE_VALUES)[number])) {
+        res.status(400).json({ error: "Invalid type" });
         return;
       }
-      filterConditions.push(eq(components.element, element));
+      filterConditions.push(
+        eq(theory.type, type as (typeof TYPE_VALUES)[number]),
+      );
+    }
+
+    if (complexity) {
+      if (typeof complexity !== "string" || complexity.length > 20) {
+        res.status(400).json({ error: "Invalid complexity" });
+        return;
+      }
+      filterConditions.push(eq(theory.complexity, complexity));
     }
 
     if (categoryId) {
@@ -91,14 +97,7 @@ router.get("/", async (req: express.Request, res: express.Response) => {
         res.status(400).json({ error: "Invalid categoryId" });
         return;
       }
-      filterConditions.push(eq(components.categoryId, catId));
-    }
-
-    if (library) {
-      const lib = String(library);
-      filterConditions.push(
-        sql`${components.libraries} @> ${JSON.stringify([lib])}::jsonb`,
-      );
+      filterConditions.push(eq(theory.categoryId, catId));
     }
 
     const where =
@@ -106,30 +105,26 @@ router.get("/", async (req: express.Request, res: express.Response) => {
 
     const countResult = await db
       .select({ count: sql<number>`count(*)` })
-      .from(components)
-      .leftJoin(categories, eq(components.categoryId, categories.id))
+      .from(theory)
+      .leftJoin(categories, eq(theory.categoryId, categories.id))
       .where(where);
 
     const totalCount = Number(countResult[0]?.count ?? 0);
 
-    const componentList = await db
+    const theoryList = await db
       .select({
-        ...getTableColumns(components),
+        ...getTableColumns(theory),
         category: { ...getTableColumns(categories) },
-        filesCount: sql<number>`(
-          SELECT count(*) FROM component_files
-          WHERE component_files.component_id = ${components.id}
-        )`,
       })
-      .from(components)
-      .leftJoin(categories, eq(components.categoryId, categories.id))
+      .from(theory)
+      .leftJoin(categories, eq(theory.categoryId, categories.id))
       .where(where)
-      .orderBy(desc(components.createdAt))
+      .orderBy(desc(theory.createdAt))
       .limit(limitPerPage)
       .offset(offset);
 
     res.status(200).json({
-      data: componentList,
+      data: theoryList,
       pagination: {
         page: currentPage,
         limit: limitPerPage,
@@ -153,27 +148,20 @@ router.get("/:id", async (req: express.Request, res: express.Response) => {
 
     const result = await db
       .select({
-        ...getTableColumns(components),
+        ...getTableColumns(theory),
         category: { ...getTableColumns(categories) },
       })
-      .from(components)
-      .leftJoin(categories, eq(categories.id, components.categoryId))
-      .where(eq(components.id, id));
+      .from(theory)
+      .leftJoin(categories, eq(categories.id, theory.categoryId))
+      .where(eq(theory.id, id));
 
     const record = result[0];
     if (!record) {
-      res.status(404).json({ error: "Component not found" });
+      res.status(404).json({ error: "Theory not found" });
       return;
     }
 
-    // Get files for multi-file components
-    const files = await db
-      .select()
-      .from(componentFiles)
-      .where(eq(componentFiles.componentId, id))
-      .orderBy(asc(componentFiles.order));
-
-    res.status(200).json({ data: { ...record, files } });
+    res.status(200).json({ data: record });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: "Internal server error" });
@@ -185,77 +173,42 @@ router.post("/", async (req: express.Request, res: express.Response) => {
     const {
       name,
       code,
-      element,
       description,
       categoryId,
+      type,
+      complexity,
       useCases,
-      libraries,
       tags,
-      variants,
-      entryFile,
       status,
-      files,
     } = req.body;
 
     if (!name || typeof name !== "string") {
       res.status(400).json({ error: "Name is required" });
       return;
     }
+
     if (!code || typeof code !== "string") {
       res.status(400).json({ error: "Code is required" });
       return;
     }
 
-    if (files && Array.isArray(files)) {
-      for (const file of files) {
-        if (!file.name || typeof file.name !== "string") {
-          res.status(400).json({ error: "Each file must have a name" });
-          return;
-        }
-        if (!file.code || typeof file.code !== "string") {
-          res.status(400).json({ error: "Each file must have code" });
-          return;
-        }
-      }
-    }
-
     const slug = slugify(name) + "-" + Date.now();
 
     const [created] = await db
-      .insert(components)
+      .insert(theory)
       .values({
         name,
         slug,
         code,
-        element: element || null,
         description: description || null,
         categoryId: categoryId || null,
+        type: type || null,
+        complexity: complexity || null,
         useCases: useCases || null,
-        libraries: libraries || null,
         tags: tags || null,
-        variants: variants || null,
-        entryFile: entryFile || null,
         status: status || "draft",
       })
-      .returning({ id: components.id });
-
-    if (!created) {
-      res.status(500).json({ error: "Failed to create component" });
-      return;
-    }
-
-    // Insert files if provided (multi-file component)
-    if (files && Array.isArray(files) && files.length > 0) {
-      const fileValues = files.map(
-        (file: { name: string; code: string }, i: number) => ({
-          componentId: created.id,
-          name: file.name,
-          code: file.code,
-          order: i,
-        }),
-      );
-      await db.insert(componentFiles).values(fileValues);
-    }
+      .returning();
 
     res.status(201).json({ data: created });
   } catch (e) {

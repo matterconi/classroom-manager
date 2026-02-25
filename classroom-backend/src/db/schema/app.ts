@@ -22,24 +22,22 @@ const timestamps = {
 
 // ── Enums ──────────────────────────────────────────────────────────────────────
 
-export const componentStatusEnum = pgEnum("component_status", [
+export const statusEnum = pgEnum("component_status", [
   "draft",
   "published",
   "archived",
 ]);
 
-export const stackEnum = pgEnum("stack", ["frontend", "backend"]);
-
-export const collectionStackEnum = pgEnum("collection_stack", [
+export const stackEnum = pgEnum("collection_stack", [
   "frontend",
   "backend",
   "fullstack",
 ]);
 
-export const snippetTypeEnum = pgEnum("snippet_type", [
+export const theoryTypeEnum = pgEnum("theory_type", [
   "algorithm",
   "data-structure",
-  "technique",
+  "design-pattern",
 ]);
 
 // ── Categories ────────────────────────────────────────────────────────────────
@@ -64,18 +62,38 @@ export const components = pgTable(
     }),
     name: varchar("name", { length: 255 }).notNull(),
     slug: varchar("slug", { length: 255 }).notNull().unique(),
+    element: varchar("element", { length: 50 }),
     description: text("description"),
     code: text("code").notNull(),
-    language: varchar("language", { length: 50 }),
-    stack: stackEnum("stack"),
+    useCases: text("use_cases"),
     libraries: jsonb("libraries").$type<string[]>(),
     tags: jsonb("tags").$type<string[]>(),
-    documentation: text("documentation"),
-    demoUrl: text("demo_url"),
-    status: componentStatusEnum("status").default("draft").notNull(),
+    variants:
+      jsonb("variants").$type<{ prop: string; options: string[] }[]>(),
+    entryFile: varchar("entry_file", { length: 255 }),
+    status: statusEnum("status").default("draft").notNull(),
     ...timestamps,
   },
   (table) => [index("components_category_id_idx").on(table.categoryId)],
+);
+
+// ── Component Files ─────────────────────────────────────────────────────────
+
+export const componentFiles = pgTable(
+  "component_files",
+  {
+    id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+    componentId: integer("component_id")
+      .notNull()
+      .references(() => components.id, { onDelete: "cascade" }),
+    name: varchar("name", { length: 255 }).notNull(),
+    code: text("code").notNull(),
+    order: integer("order").default(0).notNull(),
+    ...timestamps,
+  },
+  (table) => [
+    index("component_files_component_id_idx").on(table.componentId),
+  ],
 );
 
 // ── Collections ───────────────────────────────────────────────────────────────
@@ -90,12 +108,11 @@ export const collections = pgTable(
     name: varchar("name", { length: 255 }).notNull(),
     slug: varchar("slug", { length: 255 }).notNull().unique(),
     description: text("description"),
-    stack: collectionStackEnum("stack"),
+    stack: stackEnum("stack"),
     libraries: jsonb("libraries").$type<string[]>(),
     tags: jsonb("tags").$type<string[]>(),
-    documentation: text("documentation"),
     entryFile: varchar("entry_file", { length: 255 }),
-    status: componentStatusEnum("status").default("draft").notNull(),
+    status: statusEnum("status").default("draft").notNull(),
     ...timestamps,
   },
   (table) => [index("collections_category_id_idx").on(table.categoryId)],
@@ -134,14 +151,38 @@ export const snippets = pgTable(
     slug: varchar("slug", { length: 255 }).notNull().unique(),
     description: text("description"),
     code: text("code").notNull(),
-    type: snippetTypeEnum("type"),
-    complexity: varchar("complexity", { length: 50 }),
+    domain: varchar("domain", { length: 50 }),
+    stack: varchar("stack", { length: 50 }),
+    language: varchar("language", { length: 50 }),
     useCases: text("use_cases"),
     tags: jsonb("tags").$type<string[]>(),
-    status: componentStatusEnum("status").default("draft").notNull(),
+    status: statusEnum("status").default("draft").notNull(),
     ...timestamps,
   },
   (table) => [index("snippets_category_id_idx").on(table.categoryId)],
+);
+
+// ── Theory ───────────────────────────────────────────────────────────────────
+
+export const theory = pgTable(
+  "theory",
+  {
+    id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+    categoryId: integer("category_id").references(() => categories.id, {
+      onDelete: "set null",
+    }),
+    name: varchar("name", { length: 255 }).notNull(),
+    slug: varchar("slug", { length: 255 }).notNull().unique(),
+    description: text("description"),
+    code: text("code").notNull(),
+    type: theoryTypeEnum("type"),
+    complexity: varchar("complexity", { length: 50 }),
+    useCases: text("use_cases"),
+    tags: jsonb("tags").$type<string[]>(),
+    status: statusEnum("status").default("draft").notNull(),
+    ...timestamps,
+  },
+  (table) => [index("theory_category_id_idx").on(table.categoryId)],
 );
 
 // ── Relations ──────────────────────────────────────────────────────────────────
@@ -150,14 +191,26 @@ export const categoryRelations = relations(categories, ({ many }) => ({
   components: many(components),
   collections: many(collections),
   snippets: many(snippets),
+  theory: many(theory),
 }));
 
-export const componentRelations = relations(components, ({ one }) => ({
+export const componentRelations = relations(components, ({ one, many }) => ({
   category: one(categories, {
     fields: [components.categoryId],
     references: [categories.id],
   }),
+  files: many(componentFiles),
 }));
+
+export const componentFileRelations = relations(
+  componentFiles,
+  ({ one }) => ({
+    component: one(components, {
+      fields: [componentFiles.componentId],
+      references: [components.id],
+    }),
+  }),
+);
 
 export const collectionRelations = relations(collections, ({ one, many }) => ({
   category: one(categories, {
@@ -184,6 +237,13 @@ export const snippetRelations = relations(snippets, ({ one }) => ({
   }),
 }));
 
+export const theoryRelations = relations(theory, ({ one }) => ({
+  category: one(categories, {
+    fields: [theory.categoryId],
+    references: [categories.id],
+  }),
+}));
+
 // ── Type exports ───────────────────────────────────────────────────────────────
 
 export type Category = typeof categories.$inferSelect;
@@ -191,6 +251,9 @@ export type NewCategory = typeof categories.$inferInsert;
 
 export type Component = typeof components.$inferSelect;
 export type NewComponent = typeof components.$inferInsert;
+
+export type ComponentFile = typeof componentFiles.$inferSelect;
+export type NewComponentFile = typeof componentFiles.$inferInsert;
 
 export type Collection = typeof collections.$inferSelect;
 export type NewCollection = typeof collections.$inferInsert;
@@ -200,3 +263,6 @@ export type NewCollectionFile = typeof collectionFiles.$inferInsert;
 
 export type Snippet = typeof snippets.$inferSelect;
 export type NewSnippet = typeof snippets.$inferInsert;
+
+export type Theory = typeof theory.$inferSelect;
+export type NewTheory = typeof theory.$inferInsert;

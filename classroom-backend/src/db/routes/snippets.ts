@@ -16,7 +16,6 @@ const SEARCH_MAX_LENGTH = 100;
 const SEARCH_PATTERN = /^[\p{L}\p{N}\s\-.,]+$/u;
 
 const STATUS_VALUES = ["draft", "published", "archived"] as const;
-const TYPE_VALUES = ["algorithm", "data-structure", "technique"] as const;
 
 const router = express.Router();
 
@@ -29,9 +28,10 @@ router.get("/", async (req: express.Request, res: express.Response) => {
     const {
       search,
       status,
-      type,
+      domain,
+      stack,
+      language,
       categoryId,
-      complexity,
       page = 1,
       limit = 10,
     } = req.query;
@@ -73,14 +73,28 @@ router.get("/", async (req: express.Request, res: express.Response) => {
       );
     }
 
-    if (type) {
-      if (!TYPE_VALUES.includes(type as (typeof TYPE_VALUES)[number])) {
-        res.status(400).json({ error: "Invalid type" });
+    if (domain) {
+      if (typeof domain !== "string") {
+        res.status(400).json({ error: "Invalid domain" });
         return;
       }
-      filterConditions.push(
-        eq(snippets.type, type as (typeof TYPE_VALUES)[number]),
-      );
+      filterConditions.push(eq(snippets.domain, domain));
+    }
+
+    if (stack) {
+      if (typeof stack !== "string") {
+        res.status(400).json({ error: "Invalid stack" });
+        return;
+      }
+      filterConditions.push(eq(snippets.stack, stack));
+    }
+
+    if (language) {
+      if (typeof language !== "string") {
+        res.status(400).json({ error: "Invalid language" });
+        return;
+      }
+      filterConditions.push(eq(snippets.language, language));
     }
 
     if (categoryId) {
@@ -90,14 +104,6 @@ router.get("/", async (req: express.Request, res: express.Response) => {
         return;
       }
       filterConditions.push(eq(snippets.categoryId, catId));
-    }
-
-    if (complexity) {
-      if (typeof complexity !== "string" || complexity.length > 20) {
-        res.status(400).json({ error: "Invalid complexity" });
-        return;
-      }
-      filterConditions.push(eq(snippets.complexity, complexity));
     }
 
     const where =
@@ -175,8 +181,9 @@ router.post("/", async (req: express.Request, res: express.Response) => {
       code,
       description,
       categoryId,
-      type,
-      complexity,
+      domain,
+      stack,
+      language,
       useCases,
       tags,
       status,
@@ -202,8 +209,9 @@ router.post("/", async (req: express.Request, res: express.Response) => {
         code,
         description: description || null,
         categoryId: categoryId || null,
-        type: type || null,
-        complexity: complexity || null,
+        domain: domain || null,
+        stack: stack || null,
+        language: language || null,
         useCases: useCases || null,
         tags: tags || null,
         status: status || "draft",

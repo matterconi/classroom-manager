@@ -1,6 +1,27 @@
-export const STACK_OPTIONS = [
-  { value: "frontend", label: "Frontend" },
-  { value: "backend", label: "Backend" },
+export const ELEMENT_OPTIONS = [
+  { value: "button", label: "Button" },
+  { value: "card", label: "Card" },
+  { value: "input", label: "Input" },
+  { value: "form", label: "Form" },
+  { value: "modal", label: "Modal" },
+  { value: "navbar", label: "Navbar" },
+  { value: "sidebar", label: "Sidebar" },
+  { value: "hero", label: "Hero" },
+  { value: "layout", label: "Layout" },
+  { value: "carousel", label: "Carousel" },
+  { value: "tabs", label: "Tabs" },
+  { value: "accordion", label: "Accordion" },
+  { value: "toast", label: "Toast" },
+  { value: "tooltip", label: "Tooltip" },
+  { value: "dropdown", label: "Dropdown" },
+  { value: "badge", label: "Badge" },
+  { value: "loader", label: "Loader" },
+  { value: "background", label: "Background" },
+  { value: "scene", label: "Scene" },
+  { value: "text", label: "Text" },
+  { value: "table", label: "Table" },
+  { value: "avatar", label: "Avatar" },
+  { value: "other", label: "Other" },
 ] as const;
 
 export const COLLECTION_STACK_OPTIONS = [
@@ -15,10 +36,30 @@ export const STATUS_OPTIONS = [
   { value: "archived", label: "Archived" },
 ] as const;
 
-export const SNIPPET_TYPE_OPTIONS = [
+export const DOMAIN_OPTIONS = [
+  { value: "hooks", label: "Hooks" },
+  { value: "api", label: "API" },
+  { value: "database", label: "Database" },
+  { value: "auth", label: "Auth" },
+  { value: "validation", label: "Validation" },
+  { value: "utility", label: "Utility" },
+  { value: "middleware", label: "Middleware" },
+  { value: "state-management", label: "State Management" },
+  { value: "file-handling", label: "File Handling" },
+  { value: "real-time", label: "Real-time" },
+  { value: "testing", label: "Testing" },
+  { value: "security", label: "Security" },
+] as const;
+
+export const SNIPPET_STACK_OPTIONS = [
+  { value: "frontend", label: "Frontend" },
+  { value: "backend", label: "Backend" },
+] as const;
+
+export const THEORY_TYPE_OPTIONS = [
   { value: "algorithm", label: "Algorithm" },
   { value: "data-structure", label: "Data Structure" },
-  { value: "technique", label: "Technique" },
+  { value: "design-pattern", label: "Design Pattern" },
 ] as const;
 
 export const COMPLEXITY_OPTIONS = [
@@ -34,9 +75,10 @@ export const COMPLEXITY_OPTIONS = [
 export const LANGUAGE_OPTIONS = [
   { value: "typescript", label: "TypeScript" },
   { value: "javascript", label: "JavaScript" },
+  { value: "python", label: "Python" },
+  { value: "sql", label: "SQL" },
   { value: "css", label: "CSS" },
   { value: "html", label: "HTML" },
-  { value: "sql", label: "SQL" },
   { value: "shell", label: "Shell" },
 ] as const;
 

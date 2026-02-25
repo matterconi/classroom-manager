@@ -12,7 +12,7 @@ import { Toaster } from "./components/refine-ui/notification/toaster";
 import { useNotificationProvider } from "./components/refine-ui/notification/use-notification-provider";
 import { ThemeProvider } from "./components/refine-ui/theme/theme-provider";
 import { dataProvider } from "./providers/data";
-import { Home, Code2, FolderOpen, Braces, Tag } from "lucide-react";
+import { Home, Code2, FolderOpen, Braces, BookOpen, Tag } from "lucide-react";
 import { Layout } from "./components/refine-ui/layout/layout";
 import DashBoard from "./pages/dashboard";
 import ComponentsList from "./pages/components/list";
@@ -24,6 +24,9 @@ import CollectionShow from "./pages/collections/show";
 import SnippetsList from "./pages/snippets/list";
 import SnippetCreate from "./pages/snippets/create";
 import SnippetShow from "./pages/snippets/show";
+import TheoryList from "./pages/theory/list";
+import TheoryCreate from "./pages/theory/create";
+import TheoryShow from "./pages/theory/show";
 import CategoriesList from "./pages/categories/list";
 import CategoryCreate from "./pages/categories/create";
 
@@ -41,6 +44,7 @@ function App() {
                 syncWithLocation: true,
                 warnWhenUnsavedChanges: true,
                 projectId: "9PKLXz-l2vDyN-fCLkJc",
+                title: { text: "La Bottega UI" },
               }}
               resources={[
                 {
@@ -68,6 +72,13 @@ function App() {
                   create: "/snippets/create",
                   show: "/snippets/show/:id",
                   meta: { label: "Snippets", icon: <Braces /> },
+                },
+                {
+                  name: "theory",
+                  list: "/theory",
+                  create: "/theory/create",
+                  show: "/theory/show/:id",
+                  meta: { label: "Theory", icon: <BookOpen /> },
                 },
                 {
                   name: "categories",
@@ -103,6 +114,12 @@ function App() {
                     <Route index element={<SnippetsList />} />
                     <Route path="create" element={<SnippetCreate />} />
                     <Route path="show/:id" element={<SnippetShow />} />
+                  </Route>
+
+                  <Route path="theory">
+                    <Route index element={<TheoryList />} />
+                    <Route path="create" element={<TheoryCreate />} />
+                    <Route path="show/:id" element={<TheoryShow />} />
                   </Route>
 
                   <Route path="categories">

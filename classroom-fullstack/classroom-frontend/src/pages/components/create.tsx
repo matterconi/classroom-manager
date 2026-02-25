@@ -1,11 +1,13 @@
 import { CreateView } from "@/components/refine-ui/views/create-view";
 import { Breadcrumb } from "@/components/refine-ui/layout/breadcrumb";
 import { Button } from "@/components/ui/button";
+import AIButton from "@/components/ui/ai-input";
 import { useBack, useList } from "@refinedev/core";
 import { Separator } from "@/components/ui/separator";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "@refinedev/react-hook-form";
+import { useAi } from "@/hooks/useAI";
 import { componentSchema } from "@/lib/schema";
 import * as z from "zod";
 import {
@@ -27,7 +29,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { Loader2 } from "lucide-react";
 import type { Category } from "@/types";
-import { STACK_OPTIONS, STATUS_OPTIONS, LANGUAGE_OPTIONS } from "@/constants";
+import { ELEMENT_OPTIONS, STATUS_OPTIONS } from "@/constants";
 
 const ComponentCreate = () => {
   const back = useBack();
@@ -50,6 +52,8 @@ const ComponentCreate = () => {
     control,
   } = form;
 
+  const { generate, result, isLoading } = useAi();
+
   const onSubmit = async (values: Record<string, unknown>) => {
     try {
       const data = values as z.infer<typeof componentSchema>;
@@ -64,6 +68,13 @@ const ComponentCreate = () => {
     pagination: { pageSize: 100 },
   });
   const categories = categoriesQuery?.data?.data || [];
+
+  const handleGenerate = () => {
+    const name = form.getValues("name");
+    const code = form.getValues("code");
+    const prompt = `TODO`;
+    generate(prompt);
+  }
 
   return (
     <CreateView>
@@ -130,6 +141,34 @@ const ComponentCreate = () => {
                 <div className="grid gap-4 sm:grid-cols-3">
                   <FormField
                     control={control}
+                    name="element"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Element</FormLabel>
+                        <Select
+                          onValueChange={field.onChange}
+                          value={field.value}
+                        >
+                          <FormControl>
+                            <SelectTrigger className="w-full">
+                              <SelectValue placeholder="Select element" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {ELEMENT_OPTIONS.map((opt) => (
+                              <SelectItem key={opt.value} value={opt.value}>
+                                {opt.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={control}
                     name="categoryId"
                     render={({ field }) => (
                       <FormItem>
@@ -163,64 +202,6 @@ const ComponentCreate = () => {
 
                   <FormField
                     control={control}
-                    name="stack"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Stack</FormLabel>
-                        <Select
-                          onValueChange={field.onChange}
-                          value={field.value}
-                        >
-                          <FormControl>
-                            <SelectTrigger className="w-full">
-                              <SelectValue placeholder="Select stack" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            {STACK_OPTIONS.map((opt) => (
-                              <SelectItem key={opt.value} value={opt.value}>
-                                {opt.label}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={control}
-                    name="language"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Language</FormLabel>
-                        <Select
-                          onValueChange={field.onChange}
-                          value={field.value}
-                        >
-                          <FormControl>
-                            <SelectTrigger className="w-full">
-                              <SelectValue placeholder="Select language" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            {LANGUAGE_OPTIONS.map((opt) => (
-                              <SelectItem key={opt.value} value={opt.value}>
-                                {opt.label}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <FormField
-                    control={control}
                     name="status"
                     render={({ field }) => (
                       <FormItem>
@@ -246,23 +227,6 @@ const ComponentCreate = () => {
                       </FormItem>
                     )}
                   />
-
-                  <FormField
-                    control={control}
-                    name="demoUrl"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Demo URL</FormLabel>
-                        <FormControl>
-                          <Input
-                            placeholder="https://..."
-                            {...field}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
                 </div>
 
                 <FormField
@@ -274,6 +238,23 @@ const ComponentCreate = () => {
                       <FormControl>
                         <Textarea
                           placeholder="Brief description of the component"
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={control}
+                  name="useCases"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Use Cases</FormLabel>
+                      <FormControl>
+                        <Textarea
+                          placeholder="When should this component be used?"
                           {...field}
                         />
                       </FormControl>

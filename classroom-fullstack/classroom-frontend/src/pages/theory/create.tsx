@@ -6,7 +6,7 @@ import { Separator } from "@/components/ui/separator";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "@refinedev/react-hook-form";
-import { snippetSchema } from "@/lib/schema";
+import { theorySchema } from "@/lib/schema";
 import * as z from "zod";
 import {
   Form,
@@ -28,19 +28,18 @@ import { Textarea } from "@/components/ui/textarea";
 import { Loader2 } from "lucide-react";
 import type { Category } from "@/types";
 import {
-  DOMAIN_OPTIONS,
-  SNIPPET_STACK_OPTIONS,
-  LANGUAGE_OPTIONS,
+  THEORY_TYPE_OPTIONS,
+  COMPLEXITY_OPTIONS,
   STATUS_OPTIONS,
 } from "@/constants";
 
-const SnippetCreate = () => {
+const TheoryCreate = () => {
   const back = useBack();
 
-  const form = useForm<z.infer<typeof snippetSchema>>({
-    resolver: zodResolver(snippetSchema) as any,
+  const form = useForm<z.infer<typeof theorySchema>>({
+    resolver: zodResolver(theorySchema) as any,
     refineCoreProps: {
-      resource: "snippets",
+      resource: "theory",
       action: "create",
     },
     defaultValues: {
@@ -57,10 +56,10 @@ const SnippetCreate = () => {
 
   const onSubmit = async (values: Record<string, unknown>) => {
     try {
-      const data = values as z.infer<typeof snippetSchema>;
+      const data = values as z.infer<typeof theorySchema>;
       await onFinish(data);
     } catch (error) {
-      console.error("Error creating snippet:", error);
+      console.error("Error creating theory:", error);
     }
   };
 
@@ -74,9 +73,9 @@ const SnippetCreate = () => {
     <CreateView>
       <Breadcrumb />
 
-      <h1 className="page-title">Create a Snippet</h1>
+      <h1 className="page-title">Create a Theory Entry</h1>
       <div className="intro-row">
-        <p>Add name and code. All other fields are optional.</p>
+        <p>Add name and code example. All other fields are optional.</p>
         <Button onClick={() => back()}>Go Back</Button>
       </div>
 
@@ -85,7 +84,7 @@ const SnippetCreate = () => {
       <div className="my-4 flex items-center">
         <Card className="w-full max-w-3xl">
           <CardHeader>
-            <CardTitle className="text-2xl font-bold">New Snippet</CardTitle>
+            <CardTitle className="text-2xl font-bold">New Theory</CardTitle>
           </CardHeader>
 
           <Separator />
@@ -103,7 +102,7 @@ const SnippetCreate = () => {
                       </FormLabel>
                       <FormControl>
                         <Input
-                          placeholder="e.g. useDebounce"
+                          placeholder="e.g. Binary Search"
                           {...field}
                         />
                       </FormControl>
@@ -118,11 +117,11 @@ const SnippetCreate = () => {
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>
-                        Code <span className="text-orange-600">*</span>
+                        Code Example <span className="text-orange-600">*</span>
                       </FormLabel>
                       <FormControl>
                         <Textarea
-                          placeholder="Paste your code here..."
+                          placeholder="Paste an example implementation..."
                           className="min-h-[300px] font-mono text-sm"
                           {...field}
                         />
@@ -135,21 +134,21 @@ const SnippetCreate = () => {
                 <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
                   <FormField
                     control={control}
-                    name="domain"
+                    name="type"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Domain</FormLabel>
+                        <FormLabel>Type</FormLabel>
                         <Select
                           onValueChange={field.onChange}
                           value={field.value}
                         >
                           <FormControl>
                             <SelectTrigger className="w-full">
-                              <SelectValue placeholder="Select domain" />
+                              <SelectValue placeholder="Select type" />
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
-                            {DOMAIN_OPTIONS.map((opt) => (
+                            {THEORY_TYPE_OPTIONS.map((opt) => (
                               <SelectItem key={opt.value} value={opt.value}>
                                 {opt.label}
                               </SelectItem>
@@ -163,21 +162,21 @@ const SnippetCreate = () => {
 
                   <FormField
                     control={control}
-                    name="stack"
+                    name="complexity"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Stack</FormLabel>
+                        <FormLabel>Complexity</FormLabel>
                         <Select
                           onValueChange={field.onChange}
                           value={field.value}
                         >
                           <FormControl>
                             <SelectTrigger className="w-full">
-                              <SelectValue placeholder="Select stack" />
+                              <SelectValue placeholder="Select complexity" />
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
-                            {SNIPPET_STACK_OPTIONS.map((opt) => (
+                            {COMPLEXITY_OPTIONS.map((opt) => (
                               <SelectItem key={opt.value} value={opt.value}>
                                 {opt.label}
                               </SelectItem>
@@ -191,23 +190,28 @@ const SnippetCreate = () => {
 
                   <FormField
                     control={control}
-                    name="language"
+                    name="categoryId"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Language</FormLabel>
+                        <FormLabel>Category</FormLabel>
                         <Select
-                          onValueChange={field.onChange}
-                          value={field.value}
+                          onValueChange={(value) =>
+                            field.onChange(Number(value))
+                          }
+                          value={field.value?.toString()}
                         >
                           <FormControl>
                             <SelectTrigger className="w-full">
-                              <SelectValue placeholder="Select language" />
+                              <SelectValue placeholder="Select category" />
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
-                            {LANGUAGE_OPTIONS.map((opt) => (
-                              <SelectItem key={opt.value} value={opt.value}>
-                                {opt.label}
+                            {categories.map((cat) => (
+                              <SelectItem
+                                key={cat.id}
+                                value={cat.id.toString()}
+                              >
+                                {cat.name}
                               </SelectItem>
                             ))}
                           </SelectContent>
@@ -248,46 +252,13 @@ const SnippetCreate = () => {
 
                 <FormField
                   control={control}
-                  name="categoryId"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Category</FormLabel>
-                      <Select
-                        onValueChange={(value) =>
-                          field.onChange(Number(value))
-                        }
-                        value={field.value?.toString()}
-                      >
-                        <FormControl>
-                          <SelectTrigger className="w-full">
-                            <SelectValue placeholder="Select category" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          {categories.map((cat) => (
-                            <SelectItem
-                              key={cat.id}
-                              value={cat.id.toString()}
-                            >
-                              {cat.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={control}
                   name="description"
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Description</FormLabel>
                       <FormControl>
                         <Textarea
-                          placeholder="Brief description of the snippet"
+                          placeholder="What is this concept and how does it work?"
                           {...field}
                         />
                       </FormControl>
@@ -304,7 +275,7 @@ const SnippetCreate = () => {
                       <FormLabel>Use Cases</FormLabel>
                       <FormControl>
                         <Textarea
-                          placeholder="When to use this snippet..."
+                          placeholder="When to apply this algorithm/pattern..."
                           {...field}
                         />
                       </FormControl>
@@ -318,11 +289,11 @@ const SnippetCreate = () => {
                 <Button type="submit" size="lg" className="w-full">
                   {isSubmitting ? (
                     <div className="flex gap-1">
-                      <span>Creating Snippet...</span>
+                      <span>Creating Theory...</span>
                       <Loader2 className="ml-2 inline-block animate-spin" />
                     </div>
                   ) : (
-                    "Create Snippet"
+                    "Create Theory"
                   )}
                 </Button>
               </form>
@@ -334,4 +305,4 @@ const SnippetCreate = () => {
   );
 };
 
-export default SnippetCreate;
+export default TheoryCreate;

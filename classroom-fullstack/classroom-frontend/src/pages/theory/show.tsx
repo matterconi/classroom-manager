@@ -9,24 +9,14 @@ import { Button } from "@/components/ui/button";
 import { Copy, Check, Loader2 } from "lucide-react";
 import { useState } from "react";
 
-import type { Snippet } from "@/types";
+import type { Theory } from "@/types";
 import { useShow } from "@refinedev/core";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
-import { DOMAIN_OPTIONS, SNIPPET_STACK_OPTIONS, LANGUAGE_OPTIONS } from "@/constants";
+import { THEORY_TYPE_OPTIONS } from "@/constants";
 
-const languageMap: Record<string, string> = {
-  typescript: "tsx",
-  javascript: "jsx",
-  python: "python",
-  sql: "sql",
-  css: "css",
-  html: "html",
-  shell: "bash",
-};
-
-const SnippetShow = () => {
-  const { query } = useShow<Snippet>({ resource: "snippets" });
+const TheoryShow = () => {
+  const { query } = useShow<Theory>({ resource: "theory" });
   const [copied, setCopied] = useState(false);
 
   const record = query?.data?.data;
@@ -53,22 +43,14 @@ const SnippetShow = () => {
     return (
       <ShowView>
         <ShowViewHeader />
-        <p className="text-muted-foreground">Snippet not found.</p>
+        <p className="text-muted-foreground">Theory not found.</p>
       </ShowView>
     );
   }
 
-  const domainLabel =
-    DOMAIN_OPTIONS.find((o) => o.value === record.domain)?.label ??
-    record.domain;
-  const stackLabel =
-    SNIPPET_STACK_OPTIONS.find((o) => o.value === record.stack)?.label ??
-    record.stack;
-  const languageLabel =
-    LANGUAGE_OPTIONS.find((o) => o.value === record.language)?.label ??
-    record.language;
-
-  const syntaxLang = languageMap[record.language || ""] || "typescript";
+  const typeLabel =
+    THEORY_TYPE_OPTIONS.find((o) => o.value === record.type)?.label ??
+    record.type;
 
   return (
     <ShowView>
@@ -80,15 +62,12 @@ const SnippetShow = () => {
           <div className="flex items-center justify-between">
             <CardTitle className="text-2xl">{record.name}</CardTitle>
             <div className="flex gap-2">
-              {record.domain && (
-                <Badge variant="secondary">{domainLabel}</Badge>
+              {record.type && (
+                <Badge variant="secondary">{typeLabel}</Badge>
               )}
-              {record.stack && (
-                <Badge variant="secondary">{stackLabel}</Badge>
-              )}
-              {record.language && (
+              {record.complexity && (
                 <Badge variant="secondary" className="font-mono">
-                  {languageLabel}
+                  {record.complexity}
                 </Badge>
               )}
               <Badge>{record.status}</Badge>
@@ -137,7 +116,7 @@ const SnippetShow = () => {
       {/* Source Code */}
       <Card className="mt-4">
         <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle className="text-lg">Source Code</CardTitle>
+          <CardTitle className="text-lg">Example Implementation</CardTitle>
           <Button variant="outline" size="sm" onClick={handleCopy}>
             {copied ? (
               <>
@@ -152,7 +131,7 @@ const SnippetShow = () => {
         </CardHeader>
         <CardContent>
           <SyntaxHighlighter
-            language={syntaxLang}
+            language="typescript"
             style={oneDark}
             customStyle={{
               borderRadius: "0.5rem",
@@ -167,7 +146,7 @@ const SnippetShow = () => {
   );
 };
 
-export default SnippetShow;
+export default TheoryShow;
 
 function InfoField({ label, value }: { label: string; value?: string }) {
   return (

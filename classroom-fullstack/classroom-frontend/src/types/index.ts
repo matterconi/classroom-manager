@@ -7,21 +7,38 @@ export type Category = {
   createdAt?: string;
 };
 
+export type ComponentVariant = {
+  prop: string;
+  options: string[];
+};
+
+export type ComponentFile = {
+  id: number;
+  componentId: number;
+  name: string;
+  code: string;
+  order: number;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
 export type Component = {
   id: number;
   categoryId?: number;
   name: string;
   slug: string;
+  element?: string;
   description?: string;
   code: string;
-  language?: string;
-  stack?: "frontend" | "backend";
+  useCases?: string;
   libraries?: string[];
   tags?: string[];
-  documentation?: string;
-  demoUrl?: string;
+  variants?: ComponentVariant[];
+  entryFile?: string;
   status: "draft" | "published" | "archived";
   category?: Category;
+  filesCount?: number;
+  files?: ComponentFile[];
   createdAt?: string;
   updatedAt?: string;
 };
@@ -35,7 +52,6 @@ export type Collection = {
   stack?: "frontend" | "backend" | "fullstack";
   libraries?: string[];
   tags?: string[];
-  documentation?: string;
   entryFile?: string;
   status: "draft" | "published" | "archived";
   category?: Category;
@@ -63,7 +79,25 @@ export type Snippet = {
   slug: string;
   description?: string;
   code: string;
-  type?: "algorithm" | "data-structure" | "technique";
+  domain?: string;
+  stack?: string;
+  language?: string;
+  useCases?: string;
+  tags?: string[];
+  status: "draft" | "published" | "archived";
+  category?: Category;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+export type Theory = {
+  id: number;
+  categoryId?: number;
+  name: string;
+  slug: string;
+  description?: string;
+  code: string;
+  type?: "algorithm" | "data-structure" | "design-pattern";
   complexity?: string;
   useCases?: string;
   tags?: string[];

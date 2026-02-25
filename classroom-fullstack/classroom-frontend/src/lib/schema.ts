@@ -6,18 +6,29 @@ export const categorySchema = z.object({
   icon: z.string().optional(),
 });
 
+const componentFileSchema = z.object({
+  name: z.string().min(1, "File name is required"),
+  code: z.string().min(1, "Code is required"),
+});
+
+const variantSchema = z.object({
+  prop: z.string().min(1, "Prop name is required"),
+  options: z.array(z.string().min(1)).min(1, "At least one option is required"),
+});
+
 export const componentSchema = z.object({
   name: z.string().min(2, "Name must be at least 2 characters"),
   code: z.string().min(1, "Code is required"),
+  element: z.string().optional(),
   description: z.string().optional(),
   categoryId: z.coerce.number().optional(),
-  language: z.string().optional(),
-  stack: z.enum(["frontend", "backend"]).optional(),
+  useCases: z.string().optional(),
   libraries: z.array(z.string()).optional(),
   tags: z.array(z.string()).optional(),
-  documentation: z.string().optional(),
-  demoUrl: z.string().url().optional().or(z.literal("")),
+  variants: z.array(variantSchema).optional(),
+  entryFile: z.string().optional(),
   status: z.enum(["draft", "published", "archived"]).optional(),
+  files: z.array(componentFileSchema).optional(),
 });
 
 export const collectionFileSchema = z.object({
@@ -33,7 +44,6 @@ export const collectionSchema = z.object({
   stack: z.enum(["frontend", "backend", "fullstack"]).optional(),
   libraries: z.array(z.string()).optional(),
   tags: z.array(z.string()).optional(),
-  documentation: z.string().optional(),
   entryFile: z.string().optional(),
   status: z.enum(["draft", "published", "archived"]).optional(),
   files: z
@@ -46,7 +56,20 @@ export const snippetSchema = z.object({
   code: z.string().min(1, "Code is required"),
   description: z.string().optional(),
   categoryId: z.coerce.number().optional(),
-  type: z.enum(["algorithm", "data-structure", "technique"]).optional(),
+  domain: z.string().optional(),
+  stack: z.string().optional(),
+  language: z.string().optional(),
+  useCases: z.string().optional(),
+  tags: z.array(z.string()).optional(),
+  status: z.enum(["draft", "published", "archived"]).optional(),
+});
+
+export const theorySchema = z.object({
+  name: z.string().min(2, "Name must be at least 2 characters"),
+  code: z.string().min(1, "Code is required"),
+  description: z.string().optional(),
+  categoryId: z.coerce.number().optional(),
+  type: z.enum(["algorithm", "data-structure", "design-pattern"]).optional(),
   complexity: z.string().optional(),
   useCases: z.string().optional(),
   tags: z.array(z.string()).optional(),

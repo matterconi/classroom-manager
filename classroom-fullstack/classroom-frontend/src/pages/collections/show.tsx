@@ -18,8 +18,6 @@ import type { Collection, CollectionFile } from "@/types";
 import { useShow } from "@refinedev/core";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   SandpackProvider,
@@ -112,7 +110,7 @@ const CollectionShow = () => {
         </CardContent>
       </Card>
 
-      {/* Tabs: Files | Preview | Docs */}
+      {/* Tabs: Files | Preview */}
       <Tabs defaultValue="files" className="mt-4">
         <TabsList>
           <TabsTrigger value="files">
@@ -123,9 +121,6 @@ const CollectionShow = () => {
             record.files.length > 0 && (
               <TabsTrigger value="preview">Preview</TabsTrigger>
             )}
-          {record.documentation && (
-            <TabsTrigger value="docs">Documentation</TabsTrigger>
-          )}
         </TabsList>
 
         <TabsContent value="files">
@@ -168,23 +163,6 @@ const CollectionShow = () => {
               </Card>
             </TabsContent>
           )}
-
-        {record.documentation && (
-          <TabsContent value="docs">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">
-                  Architecture Overview
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="prose dark:prose-invert max-w-none">
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                  {record.documentation}
-                </ReactMarkdown>
-              </CardContent>
-            </Card>
-          </TabsContent>
-        )}
       </Tabs>
     </ShowView>
   );

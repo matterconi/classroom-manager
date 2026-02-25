@@ -7,15 +7,18 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { Copy, Check, Loader2 } from "lucide-react";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import { Copy, Check, ChevronDown, Loader2 } from "lucide-react";
 import { useState } from "react";
 
-import type { Component } from "@/types";
+import type { Component, ComponentFile, ComponentVariant } from "@/types";
 import { useShow } from "@refinedev/core";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
 import {
   SandpackProvider,
   SandpackLayout,
@@ -26,6 +29,9 @@ import {
 const ComponentShow = () => {
   const { query } = useShow<Component>({ resource: "components" });
   const [copied, setCopied] = useState(false);
+  const [variantSelections, setVariantSelections] = useState<
+    Record<string, string>
+  >({});
 
   const record = query?.data?.data;
   const isLoading = query?.isLoading;
@@ -56,13 +62,45 @@ const ComponentShow = () => {
     );
   }
 
-  const languageMap: Record<string, string> = {
-    typescript: "tsx",
-    javascript: "jsx",
-    css: "css",
-    html: "html",
-    sql: "sql",
-    shell: "bash",
+  const hasFiles = record.files && record.files.length > 0;
+  const hasVariants = record.variants && record.variants.length > 0;
+
+  // Build sandbox files from component files or single code
+  const buildSandpackFiles = () => {
+    const files: Record<string, string> = {};
+
+    if (hasFiles) {
+      for (const f of record.files!) {
+        files[`/${f.name}`] = f.code;
+      }
+    } else {
+      files["/App.tsx"] = record.code;
+    }
+
+    // If variants are defined, generate a wrapper that renders with selected props
+    if (hasVariants) {
+      const propsString = record
+        .variants!.map((v) => {
+          const selected = variantSelections[v.prop] || v.options[0];
+          return `${v.prop}="${selected}"`;
+        })
+        .join(" ");
+
+      const componentName = record.name.replace(/\s+/g, "");
+      const entryFile = record.entryFile || (hasFiles ? record.files![0].name : "App.tsx");
+      const importPath = `./${entryFile.replace(/\.tsx?$/, "")}`;
+
+      files["/VariantPreview.tsx"] = `import ${componentName} from "${importPath}";\n\nexport default function VariantPreview() {\n  return <${componentName} ${propsString} />;\n}`;
+    }
+
+    return files;
+  };
+
+  const getActiveFile = () => {
+    if (hasVariants) return "/VariantPreview.tsx";
+    if (record.entryFile) return `/${record.entryFile}`;
+    if (hasFiles) return `/${record.files![0].name}`;
+    return "/App.tsx";
   };
 
   return (
@@ -74,7 +112,12 @@ const ComponentShow = () => {
         <CardHeader>
           <div className="flex items-center justify-between">
             <CardTitle className="text-2xl">{record.name}</CardTitle>
-            <Badge>{record.status}</Badge>
+            <div className="flex gap-2">
+              {record.element && (
+                <Badge variant="secondary">{record.element}</Badge>
+              )}
+              <Badge>{record.status}</Badge>
+            </div>
           </div>
           {record.description && (
             <p className="text-muted-foreground">{record.description}</p>
@@ -86,10 +129,6 @@ const ComponentShow = () => {
         <CardContent className="mt-4 flex flex-wrap gap-4">
           {record.category && (
             <InfoField label="Category" value={record.category.name} />
-          )}
-          {record.stack && <InfoField label="Stack" value={record.stack} />}
-          {record.language && (
-            <InfoField label="Language" value={record.language} />
           )}
           {record.libraries && record.libraries.length > 0 && (
             <div>
@@ -120,91 +159,103 @@ const ComponentShow = () => {
         </CardContent>
       </Card>
 
-      {/* Tabs: Code | Demo | Docs */}
-      <Tabs defaultValue="code" className="mt-4">
+      {/* Use Cases */}
+      {record.useCases && (
+        <Card className="mt-4">
+          <CardHeader>
+            <CardTitle className="text-lg">Use Cases</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-muted-foreground whitespace-pre-wrap">
+              {record.useCases}
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Tabs: Code | Files | Preview */}
+      <Tabs defaultValue={hasFiles ? "files" : "code"} className="mt-4">
         <TabsList>
-          <TabsTrigger value="code">Code</TabsTrigger>
-          {record.stack === "frontend" && (
-            <TabsTrigger value="demo">Live Preview</TabsTrigger>
+          {!hasFiles && <TabsTrigger value="code">Code</TabsTrigger>}
+          {hasFiles && (
+            <TabsTrigger value="files">
+              Files ({record.files!.length})
+            </TabsTrigger>
           )}
-          {record.documentation && (
-            <TabsTrigger value="docs">Documentation</TabsTrigger>
-          )}
+          <TabsTrigger value="preview">Live Preview</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="code">
+        {!hasFiles && (
+          <TabsContent value="code">
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between">
+                <CardTitle className="text-lg">Source Code</CardTitle>
+                <Button variant="outline" size="sm" onClick={handleCopy}>
+                  {copied ? (
+                    <>
+                      <Check className="mr-1 h-4 w-4" /> Copied
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="mr-1 h-4 w-4" /> Copy
+                    </>
+                  )}
+                </Button>
+              </CardHeader>
+              <CardContent>
+                <SyntaxHighlighter
+                  language="tsx"
+                  style={oneDark}
+                  customStyle={{
+                    borderRadius: "0.5rem",
+                    fontSize: "0.875rem",
+                  }}
+                >
+                  {record.code}
+                </SyntaxHighlighter>
+              </CardContent>
+            </Card>
+          </TabsContent>
+        )}
+
+        {hasFiles && (
+          <TabsContent value="files">
+            <div className="space-y-3">
+              {record.files!.map((file) => (
+                <FileCard key={file.id} file={file} />
+              ))}
+            </div>
+          </TabsContent>
+        )}
+
+        <TabsContent value="preview">
           <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle className="text-lg">Source Code</CardTitle>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleCopy}
-              >
-                {copied ? (
-                  <>
-                    <Check className="mr-1 h-4 w-4" /> Copied
-                  </>
-                ) : (
-                  <>
-                    <Copy className="mr-1 h-4 w-4" /> Copy
-                  </>
-                )}
-              </Button>
+            <CardHeader>
+              <CardTitle className="text-lg">Live Preview</CardTitle>
             </CardHeader>
             <CardContent>
-              <SyntaxHighlighter
-                language={languageMap[record.language || ""] || "typescript"}
-                style={oneDark}
-                customStyle={{
-                  borderRadius: "0.5rem",
-                  fontSize: "0.875rem",
-                }}
+              {/* Variants control panel */}
+              {hasVariants && (
+                <VariantsPanel
+                  variants={record.variants!}
+                  selections={variantSelections}
+                  onChange={setVariantSelections}
+                />
+              )}
+              <SandpackProvider
+                template="react-ts"
+                files={buildSandpackFiles()}
+                options={{ activeFile: getActiveFile() }}
+                theme="dark"
               >
-                {record.code}
-              </SyntaxHighlighter>
+                <SandpackLayout>
+                  <SandpackCodeEditor style={{ height: "400px" }} />
+                  <SandpackPreview style={{ height: "400px" }} />
+                </SandpackLayout>
+              </SandpackProvider>
             </CardContent>
           </Card>
         </TabsContent>
-
-        {record.stack === "frontend" && (
-          <TabsContent value="demo">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">Live Preview</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <SandpackProvider
-                  template="react-ts"
-                  files={{
-                    "/App.tsx": record.code,
-                  }}
-                  theme="dark"
-                >
-                  <SandpackLayout>
-                    <SandpackCodeEditor style={{ height: "400px" }} />
-                    <SandpackPreview style={{ height: "400px" }} />
-                  </SandpackLayout>
-                </SandpackProvider>
-              </CardContent>
-            </Card>
-          </TabsContent>
-        )}
-
-        {record.documentation && (
-          <TabsContent value="docs">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">Documentation</CardTitle>
-              </CardHeader>
-              <CardContent className="prose dark:prose-invert max-w-none">
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                  {record.documentation}
-                </ReactMarkdown>
-              </CardContent>
-            </Card>
-          </TabsContent>
-        )}
       </Tabs>
     </ShowView>
   );
@@ -217,6 +268,105 @@ function InfoField({ label, value }: { label: string; value?: string }) {
     <div>
       <p className="text-sm font-medium text-muted-foreground">{label}</p>
       <p className="text-foreground">{value ?? "—"}</p>
+    </div>
+  );
+}
+
+function FileCard({ file }: { file: ComponentFile }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = async () => {
+    await navigator.clipboard.writeText(file.code);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <Collapsible open={isOpen} onOpenChange={setIsOpen}>
+      <Card>
+        <CollapsibleTrigger asChild>
+          <CardHeader className="cursor-pointer hover:bg-muted/50">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <ChevronDown
+                  className={`h-4 w-4 transition-transform ${isOpen ? "rotate-0" : "-rotate-90"}`}
+                />
+                <span className="font-mono text-sm font-medium">
+                  {file.name}
+                </span>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleCopy();
+                }}
+              >
+                {copied ? (
+                  <Check className="h-4 w-4" />
+                ) : (
+                  <Copy className="h-4 w-4" />
+                )}
+              </Button>
+            </div>
+          </CardHeader>
+        </CollapsibleTrigger>
+        <CollapsibleContent>
+          <CardContent>
+            <SyntaxHighlighter
+              language="tsx"
+              style={oneDark}
+              customStyle={{
+                borderRadius: "0.5rem",
+                fontSize: "0.875rem",
+              }}
+            >
+              {file.code}
+            </SyntaxHighlighter>
+          </CardContent>
+        </CollapsibleContent>
+      </Card>
+    </Collapsible>
+  );
+}
+
+function VariantsPanel({
+  variants,
+  selections,
+  onChange,
+}: {
+  variants: ComponentVariant[];
+  selections: Record<string, string>;
+  onChange: (s: Record<string, string>) => void;
+}) {
+  return (
+    <div className="mb-4 flex flex-wrap gap-4 rounded-lg border p-4">
+      {variants.map((v) => {
+        const current = selections[v.prop] || v.options[0];
+        return (
+          <div key={v.prop}>
+            <p className="mb-1 text-sm font-medium text-muted-foreground">
+              {v.prop}
+            </p>
+            <div className="flex gap-1">
+              {v.options.map((opt) => (
+                <Button
+                  key={opt}
+                  variant={current === opt ? "default" : "outline"}
+                  size="sm"
+                  onClick={() =>
+                    onChange({ ...selections, [v.prop]: opt })
+                  }
+                >
+                  {opt}
+                </Button>
+              ))}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
