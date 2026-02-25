@@ -16,6 +16,12 @@ import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import {
+  SandpackProvider,
+  SandpackLayout,
+  SandpackCodeEditor,
+  SandpackPreview,
+} from "@codesandbox/sandpack-react";
 
 const ComponentShow = () => {
   const { query } = useShow<Component>({ resource: "components" });
@@ -118,8 +124,8 @@ const ComponentShow = () => {
       <Tabs defaultValue="code" className="mt-4">
         <TabsList>
           <TabsTrigger value="code">Code</TabsTrigger>
-          {record.stack === "frontend" && record.demoUrl && (
-            <TabsTrigger value="demo">Live Demo</TabsTrigger>
+          {record.stack === "frontend" && (
+            <TabsTrigger value="demo">Live Preview</TabsTrigger>
           )}
           {record.documentation && (
             <TabsTrigger value="docs">Documentation</TabsTrigger>
@@ -161,19 +167,25 @@ const ComponentShow = () => {
           </Card>
         </TabsContent>
 
-        {record.stack === "frontend" && record.demoUrl && (
+        {record.stack === "frontend" && (
           <TabsContent value="demo">
             <Card>
               <CardHeader>
-                <CardTitle className="text-lg">Live Demo</CardTitle>
+                <CardTitle className="text-lg">Live Preview</CardTitle>
               </CardHeader>
               <CardContent>
-                <iframe
-                  src={record.demoUrl}
-                  className="h-[500px] w-full rounded-lg border"
-                  sandbox="allow-scripts allow-same-origin"
-                  title={`${record.name} demo`}
-                />
+                <SandpackProvider
+                  template="react-ts"
+                  files={{
+                    "/App.tsx": record.code,
+                  }}
+                  theme="dark"
+                >
+                  <SandpackLayout>
+                    <SandpackCodeEditor style={{ height: "400px" }} />
+                    <SandpackPreview style={{ height: "400px" }} />
+                  </SandpackLayout>
+                </SandpackProvider>
               </CardContent>
             </Card>
           </TabsContent>

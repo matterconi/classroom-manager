@@ -36,6 +36,7 @@ export type Collection = {
   libraries?: string[];
   tags?: string[];
   documentation?: string;
+  entryFile?: string;
   status: "draft" | "published" | "archived";
   category?: Category;
   filesCount?: number;
@@ -51,6 +52,23 @@ export type CollectionFile = {
   code: string;
   language?: string;
   order: number;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+export type Snippet = {
+  id: number;
+  categoryId?: number;
+  name: string;
+  slug: string;
+  description?: string;
+  code: string;
+  type?: "algorithm" | "data-structure" | "technique";
+  complexity?: string;
+  useCases?: string;
+  tags?: string[];
+  status: "draft" | "published" | "archived";
+  category?: Category;
   createdAt?: string;
   updatedAt?: string;
 };

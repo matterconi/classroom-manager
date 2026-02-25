@@ -12,7 +12,7 @@ import { Toaster } from "./components/refine-ui/notification/toaster";
 import { useNotificationProvider } from "./components/refine-ui/notification/use-notification-provider";
 import { ThemeProvider } from "./components/refine-ui/theme/theme-provider";
 import { dataProvider } from "./providers/data";
-import { Home, Code2, FolderOpen, Tag } from "lucide-react";
+import { Home, Code2, FolderOpen, Braces, Tag } from "lucide-react";
 import { Layout } from "./components/refine-ui/layout/layout";
 import DashBoard from "./pages/dashboard";
 import ComponentsList from "./pages/components/list";
@@ -21,6 +21,9 @@ import ComponentShow from "./pages/components/show";
 import CollectionsList from "./pages/collections/list";
 import CollectionCreate from "./pages/collections/create";
 import CollectionShow from "./pages/collections/show";
+import SnippetsList from "./pages/snippets/list";
+import SnippetCreate from "./pages/snippets/create";
+import SnippetShow from "./pages/snippets/show";
 import CategoriesList from "./pages/categories/list";
 import CategoryCreate from "./pages/categories/create";
 
@@ -60,6 +63,13 @@ function App() {
                   meta: { label: "Collections", icon: <FolderOpen /> },
                 },
                 {
+                  name: "snippets",
+                  list: "/snippets",
+                  create: "/snippets/create",
+                  show: "/snippets/show/:id",
+                  meta: { label: "Snippets", icon: <Braces /> },
+                },
+                {
                   name: "categories",
                   list: "/categories",
                   create: "/categories/create",
@@ -87,6 +97,12 @@ function App() {
                     <Route index element={<CollectionsList />} />
                     <Route path="create" element={<CollectionCreate />} />
                     <Route path="show/:id" element={<CollectionShow />} />
+                  </Route>
+
+                  <Route path="snippets">
+                    <Route index element={<SnippetsList />} />
+                    <Route path="create" element={<SnippetCreate />} />
+                    <Route path="show/:id" element={<SnippetShow />} />
                   </Route>
 
                   <Route path="categories">

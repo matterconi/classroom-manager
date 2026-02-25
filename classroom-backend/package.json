@@ -1,7 +1,7 @@
 {
-  "name": "classroom-backend",
+  "name": "la-bottega-ui-backend",
   "version": "1.0.0",
-  "description": "Classroom Manager Backend API",
+  "description": "La Bottega UI — Backend API",
   "type": "module",
   "main": "dist/server.js",
   "scripts": {

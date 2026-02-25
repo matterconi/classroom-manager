@@ -7,21 +7,16 @@ import {
   sql,
   desc,
   getTableColumns,
-  asc,
 } from "drizzle-orm";
 import { db } from "../index.js";
-import {
-  collections,
-  collectionFiles,
-  categories,
-} from "../schema/index.js";
+import { snippets, categories } from "../schema/index.js";
 
 const LIMIT_MAX = 100;
 const SEARCH_MAX_LENGTH = 100;
 const SEARCH_PATTERN = /^[\p{L}\p{N}\s\-.,]+$/u;
 
 const STATUS_VALUES = ["draft", "published", "archived"] as const;
-const STACK_VALUES = ["frontend", "backend", "fullstack"] as const;
+const TYPE_VALUES = ["algorithm", "data-structure", "technique"] as const;
 
 const router = express.Router();
 
@@ -34,9 +29,9 @@ router.get("/", async (req: express.Request, res: express.Response) => {
     const {
       search,
       status,
-      stack,
+      type,
       categoryId,
-      library,
+      complexity,
       page = 1,
       limit = 10,
     } = req.query;
@@ -62,8 +57,8 @@ router.get("/", async (req: express.Request, res: express.Response) => {
       }
       filterConditions.push(
         or(
-          ilike(collections.name, `%${trimmedSearch}%`),
-          ilike(collections.description, `%${trimmedSearch}%`),
+          ilike(snippets.name, `%${trimmedSearch}%`),
+          ilike(snippets.description, `%${trimmedSearch}%`),
         ),
       );
     }
@@ -74,17 +69,17 @@ router.get("/", async (req: express.Request, res: express.Response) => {
         return;
       }
       filterConditions.push(
-        eq(collections.status, status as (typeof STATUS_VALUES)[number]),
+        eq(snippets.status, status as (typeof STATUS_VALUES)[number]),
       );
     }
 
-    if (stack) {
-      if (!STACK_VALUES.includes(stack as (typeof STACK_VALUES)[number])) {
-        res.status(400).json({ error: "Invalid stack" });
+    if (type) {
+      if (!TYPE_VALUES.includes(type as (typeof TYPE_VALUES)[number])) {
+        res.status(400).json({ error: "Invalid type" });
         return;
       }
       filterConditions.push(
-        eq(collections.stack, stack as (typeof STACK_VALUES)[number]),
+        eq(snippets.type, type as (typeof TYPE_VALUES)[number]),
       );
     }
 
@@ -94,14 +89,15 @@ router.get("/", async (req: express.Request, res: express.Response) => {
         res.status(400).json({ error: "Invalid categoryId" });
         return;
       }
-      filterConditions.push(eq(collections.categoryId, catId));
+      filterConditions.push(eq(snippets.categoryId, catId));
     }
 
-    if (library) {
-      const lib = String(library);
-      filterConditions.push(
-        sql`${collections.libraries} @> ${JSON.stringify([lib])}::jsonb`,
-      );
+    if (complexity) {
+      if (typeof complexity !== "string" || complexity.length > 20) {
+        res.status(400).json({ error: "Invalid complexity" });
+        return;
+      }
+      filterConditions.push(eq(snippets.complexity, complexity));
     }
 
     const where =
@@ -109,31 +105,26 @@ router.get("/", async (req: express.Request, res: express.Response) => {
 
     const countResult = await db
       .select({ count: sql<number>`count(*)` })
-      .from(collections)
-      .leftJoin(categories, eq(collections.categoryId, categories.id))
+      .from(snippets)
+      .leftJoin(categories, eq(snippets.categoryId, categories.id))
       .where(where);
 
     const totalCount = Number(countResult[0]?.count ?? 0);
 
-    // Get collections with file count
-    const collectionList = await db
+    const snippetList = await db
       .select({
-        ...getTableColumns(collections),
+        ...getTableColumns(snippets),
         category: { ...getTableColumns(categories) },
-        filesCount: sql<number>`(
-          SELECT count(*) FROM collection_files
-          WHERE collection_files.collection_id = ${collections.id}
-        )`,
       })
-      .from(collections)
-      .leftJoin(categories, eq(collections.categoryId, categories.id))
+      .from(snippets)
+      .leftJoin(categories, eq(snippets.categoryId, categories.id))
       .where(where)
-      .orderBy(desc(collections.createdAt))
+      .orderBy(desc(snippets.createdAt))
       .limit(limitPerPage)
       .offset(offset);
 
     res.status(200).json({
-      data: collectionList,
+      data: snippetList,
       pagination: {
         page: currentPage,
         limit: limitPerPage,
@@ -157,27 +148,20 @@ router.get("/:id", async (req: express.Request, res: express.Response) => {
 
     const result = await db
       .select({
-        ...getTableColumns(collections),
+        ...getTableColumns(snippets),
         category: { ...getTableColumns(categories) },
       })
-      .from(collections)
-      .leftJoin(categories, eq(categories.id, collections.categoryId))
-      .where(eq(collections.id, id));
+      .from(snippets)
+      .leftJoin(categories, eq(categories.id, snippets.categoryId))
+      .where(eq(snippets.id, id));
 
     const record = result[0];
     if (!record) {
-      res.status(404).json({ error: "Collection not found" });
+      res.status(404).json({ error: "Snippet not found" });
       return;
     }
 
-    // Get files for this collection
-    const files = await db
-      .select()
-      .from(collectionFiles)
-      .where(eq(collectionFiles.collectionId, id))
-      .orderBy(asc(collectionFiles.order));
-
-    res.status(200).json({ data: { ...record, files } });
+    res.status(200).json({ data: record });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: "Internal server error" });
@@ -188,15 +172,14 @@ router.post("/", async (req: express.Request, res: express.Response) => {
   try {
     const {
       name,
+      code,
       description,
       categoryId,
-      stack,
-      libraries,
+      type,
+      complexity,
+      useCases,
       tags,
-      documentation,
-      entryFile,
       status,
-      files,
     } = req.body;
 
     if (!name || typeof name !== "string") {
@@ -204,57 +187,28 @@ router.post("/", async (req: express.Request, res: express.Response) => {
       return;
     }
 
-    if (!files || !Array.isArray(files) || files.length === 0) {
-      res.status(400).json({ error: "At least one file is required" });
+    if (!code || typeof code !== "string") {
+      res.status(400).json({ error: "Code is required" });
       return;
-    }
-
-    for (const file of files) {
-      if (!file.name || typeof file.name !== "string") {
-        res.status(400).json({ error: "Each file must have a name" });
-        return;
-      }
-      if (!file.code || typeof file.code !== "string") {
-        res.status(400).json({ error: "Each file must have code" });
-        return;
-      }
     }
 
     const slug = slugify(name) + "-" + Date.now();
 
     const [created] = await db
-      .insert(collections)
+      .insert(snippets)
       .values({
         name,
         slug,
+        code,
         description: description || null,
         categoryId: categoryId || null,
-        stack: stack || null,
-        libraries: libraries || null,
+        type: type || null,
+        complexity: complexity || null,
+        useCases: useCases || null,
         tags: tags || null,
-        documentation: documentation || null,
-        entryFile: entryFile || null,
         status: status || "draft",
       })
-      .returning({ id: collections.id });
-
-    if (!created) {
-      res.status(500).json({ error: "Failed to create collection" });
-      return;
-    }
-
-    // Insert files
-    const fileValues = files.map(
-      (file: { name: string; code: string; language?: string }, i: number) => ({
-        collectionId: created.id,
-        name: file.name,
-        code: file.code,
-        language: file.language || null,
-        order: i,
-      }),
-    );
-
-    await db.insert(collectionFiles).values(fileValues);
+      .returning();
 
     res.status(201).json({ data: created });
   } catch (e) {

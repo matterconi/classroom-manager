@@ -36,6 +36,12 @@ export const collectionStackEnum = pgEnum("collection_stack", [
   "fullstack",
 ]);
 
+export const snippetTypeEnum = pgEnum("snippet_type", [
+  "algorithm",
+  "data-structure",
+  "technique",
+]);
+
 // ── Categories ────────────────────────────────────────────────────────────────
 
 export const categories = pgTable("categories", {
@@ -88,6 +94,7 @@ export const collections = pgTable(
     libraries: jsonb("libraries").$type<string[]>(),
     tags: jsonb("tags").$type<string[]>(),
     documentation: text("documentation"),
+    entryFile: varchar("entry_file", { length: 255 }),
     status: componentStatusEnum("status").default("draft").notNull(),
     ...timestamps,
   },
@@ -114,11 +121,35 @@ export const collectionFiles = pgTable(
   ],
 );
 
+// ── Snippets ─────────────────────────────────────────────────────────────────
+
+export const snippets = pgTable(
+  "snippets",
+  {
+    id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+    categoryId: integer("category_id").references(() => categories.id, {
+      onDelete: "set null",
+    }),
+    name: varchar("name", { length: 255 }).notNull(),
+    slug: varchar("slug", { length: 255 }).notNull().unique(),
+    description: text("description"),
+    code: text("code").notNull(),
+    type: snippetTypeEnum("type"),
+    complexity: varchar("complexity", { length: 50 }),
+    useCases: text("use_cases"),
+    tags: jsonb("tags").$type<string[]>(),
+    status: componentStatusEnum("status").default("draft").notNull(),
+    ...timestamps,
+  },
+  (table) => [index("snippets_category_id_idx").on(table.categoryId)],
+);
+
 // ── Relations ──────────────────────────────────────────────────────────────────
 
 export const categoryRelations = relations(categories, ({ many }) => ({
   components: many(components),
   collections: many(collections),
+  snippets: many(snippets),
 }));
 
 export const componentRelations = relations(components, ({ one }) => ({
@@ -146,6 +177,13 @@ export const collectionFileRelations = relations(
   }),
 );
 
+export const snippetRelations = relations(snippets, ({ one }) => ({
+  category: one(categories, {
+    fields: [snippets.categoryId],
+    references: [categories.id],
+  }),
+}));
+
 // ── Type exports ───────────────────────────────────────────────────────────────
 
 export type Category = typeof categories.$inferSelect;
@@ -159,3 +197,6 @@ export type NewCollection = typeof collections.$inferInsert;
 
 export type CollectionFile = typeof collectionFiles.$inferSelect;
 export type NewCollectionFile = typeof collectionFiles.$inferInsert;
+
+export type Snippet = typeof snippets.$inferSelect;
+export type NewSnippet = typeof snippets.$inferInsert;

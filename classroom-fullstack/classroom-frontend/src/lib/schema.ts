@@ -34,8 +34,21 @@ export const collectionSchema = z.object({
   libraries: z.array(z.string()).optional(),
   tags: z.array(z.string()).optional(),
   documentation: z.string().optional(),
+  entryFile: z.string().optional(),
   status: z.enum(["draft", "published", "archived"]).optional(),
   files: z
     .array(collectionFileSchema)
     .min(1, "At least one file is required"),
+});
+
+export const snippetSchema = z.object({
+  name: z.string().min(2, "Name must be at least 2 characters"),
+  code: z.string().min(1, "Code is required"),
+  description: z.string().optional(),
+  categoryId: z.coerce.number().optional(),
+  type: z.enum(["algorithm", "data-structure", "technique"]).optional(),
+  complexity: z.string().optional(),
+  useCases: z.string().optional(),
+  tags: z.array(z.string()).optional(),
+  status: z.enum(["draft", "published", "archived"]).optional(),
 });

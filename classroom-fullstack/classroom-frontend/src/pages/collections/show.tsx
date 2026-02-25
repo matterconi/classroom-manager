@@ -20,6 +20,13 @@ import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  SandpackProvider,
+  SandpackLayout,
+  SandpackCodeEditor,
+  SandpackPreview,
+} from "@codesandbox/sandpack-react";
 
 const CollectionShow = () => {
   const { query } = useShow<Collection>({ resource: "collections" });
@@ -105,31 +112,80 @@ const CollectionShow = () => {
         </CardContent>
       </Card>
 
-      {/* Documentation */}
-      {record.documentation && (
-        <Card className="mt-4">
-          <CardHeader>
-            <CardTitle className="text-lg">Architecture Overview</CardTitle>
-          </CardHeader>
-          <CardContent className="prose dark:prose-invert max-w-none">
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>
-              {record.documentation}
-            </ReactMarkdown>
-          </CardContent>
-        </Card>
-      )}
+      {/* Tabs: Files | Preview | Docs */}
+      <Tabs defaultValue="files" className="mt-4">
+        <TabsList>
+          <TabsTrigger value="files">
+            Files ({record.files?.length ?? 0})
+          </TabsTrigger>
+          {(record.stack === "frontend" || record.stack === "fullstack") &&
+            record.files &&
+            record.files.length > 0 && (
+              <TabsTrigger value="preview">Preview</TabsTrigger>
+            )}
+          {record.documentation && (
+            <TabsTrigger value="docs">Documentation</TabsTrigger>
+          )}
+        </TabsList>
 
-      {/* Files */}
-      {record.files && record.files.length > 0 && (
-        <div className="mt-4 space-y-3">
-          <h3 className="text-lg font-semibold">
-            Files ({record.files.length})
-          </h3>
-          {record.files.map((file) => (
-            <FileCard key={file.id} file={file} />
-          ))}
-        </div>
-      )}
+        <TabsContent value="files">
+          {record.files && record.files.length > 0 && (
+            <div className="space-y-3">
+              {record.files.map((file) => (
+                <FileCard key={file.id} file={file} />
+              ))}
+            </div>
+          )}
+        </TabsContent>
+
+        {(record.stack === "frontend" || record.stack === "fullstack") &&
+          record.files &&
+          record.files.length > 0 && (
+            <TabsContent value="preview">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg">Live Preview</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <SandpackProvider
+                    template="react-ts"
+                    files={Object.fromEntries(
+                      record.files.map((f) => [`/${f.name}`, f.code]),
+                    )}
+                    options={{
+                      activeFile: record.entryFile
+                        ? `/${record.entryFile}`
+                        : `/${record.files[0].name}`,
+                    }}
+                    theme="dark"
+                  >
+                    <SandpackLayout>
+                      <SandpackCodeEditor style={{ height: "500px" }} />
+                      <SandpackPreview style={{ height: "500px" }} />
+                    </SandpackLayout>
+                  </SandpackProvider>
+                </CardContent>
+              </Card>
+            </TabsContent>
+          )}
+
+        {record.documentation && (
+          <TabsContent value="docs">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">
+                  Architecture Overview
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="prose dark:prose-invert max-w-none">
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                  {record.documentation}
+                </ReactMarkdown>
+              </CardContent>
+            </Card>
+          </TabsContent>
+        )}
+      </Tabs>
     </ShowView>
   );
 };

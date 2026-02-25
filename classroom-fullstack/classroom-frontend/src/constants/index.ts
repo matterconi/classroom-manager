@@ -15,6 +15,22 @@ export const STATUS_OPTIONS = [
   { value: "archived", label: "Archived" },
 ] as const;
 
+export const SNIPPET_TYPE_OPTIONS = [
+  { value: "algorithm", label: "Algorithm" },
+  { value: "data-structure", label: "Data Structure" },
+  { value: "technique", label: "Technique" },
+] as const;
+
+export const COMPLEXITY_OPTIONS = [
+  { value: "O(1)", label: "O(1)" },
+  { value: "O(log n)", label: "O(log n)" },
+  { value: "O(n)", label: "O(n)" },
+  { value: "O(n log n)", label: "O(n log n)" },
+  { value: "O(n^2)", label: "O(n²)" },
+  { value: "O(2^n)", label: "O(2^n)" },
+  { value: "O(n!)", label: "O(n!)" },
+] as const;
+
 export const LANGUAGE_OPTIONS = [
   { value: "typescript", label: "TypeScript" },
   { value: "javascript", label: "JavaScript" },

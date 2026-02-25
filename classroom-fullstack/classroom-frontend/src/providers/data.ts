@@ -56,6 +56,14 @@ const options: CreateDataProviderOptions = {
           if (field === "library") params.library = value;
         }
 
+        if (resource === "snippets") {
+          if (field === "name") params.search = value;
+          if (field === "status") params.status = value;
+          if (field === "categoryId") params.categoryId = value;
+          if (field === "type") params.type = value;
+          if (field === "complexity") params.complexity = value;
+        }
+
         if (resource === "categories") {
           if (field === "name") params.search = value;
         }

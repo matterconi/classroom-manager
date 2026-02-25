@@ -6,6 +6,7 @@ import { auth } from "./lib/auth.js";
 import categoryRouter from "./db/routes/categories.js";
 import componentRouter from "./db/routes/components.js";
 import collectionRouter from "./db/routes/collections.js";
+import snippetRouter from "./db/routes/snippets.js";
 import userRouter from "./db/routes/users.js";
 import securityMiddleware from "./middleware/security.js";
 
@@ -28,10 +29,11 @@ app.use(securityMiddleware);
 app.use("/api/categories", categoryRouter);
 app.use("/api/components", componentRouter);
 app.use("/api/collections", collectionRouter);
+app.use("/api/snippets", snippetRouter);
 app.use("/api/users", userRouter);
 
 app.get("/", (_req: Request, res: Response) => {
-  res.json({ message: "Component Library API" });
+  res.json({ message: "La Bottega UI — API" });
 });
 
 app.listen(PORT, "0.0.0.0", () => {
