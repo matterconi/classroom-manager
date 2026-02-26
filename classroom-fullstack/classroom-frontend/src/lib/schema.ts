@@ -18,8 +18,8 @@ const variantSchema = z.object({
 
 export const componentSchema = z.object({
   name: z.string().min(2, "Name must be at least 2 characters"),
-  code: z.string().min(1, "Code is required"),
   element: z.string().optional(),
+  domain: z.string().optional(),
   description: z.string().optional(),
   categoryId: z.coerce.number().optional(),
   useCases: z.string().optional(),
@@ -28,7 +28,7 @@ export const componentSchema = z.object({
   variants: z.array(variantSchema).optional(),
   entryFile: z.string().optional(),
   status: z.enum(["draft", "published", "archived"]).optional(),
-  files: z.array(componentFileSchema).optional(),
+  files: z.array(componentFileSchema).min(1, "At least one file is required"),
 });
 
 export const collectionFileSchema = z.object({
@@ -60,6 +60,7 @@ export const snippetSchema = z.object({
   stack: z.string().optional(),
   language: z.string().optional(),
   useCases: z.string().optional(),
+  libraries: z.array(z.string()).optional(),
   tags: z.array(z.string()).optional(),
   status: z.enum(["draft", "published", "archived"]).optional(),
 });

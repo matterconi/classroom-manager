@@ -25,6 +25,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { TagInput } from "@/components/ui/tag-input";
 import { Loader2 } from "lucide-react";
 import type { Category } from "@/types";
 import {
@@ -277,6 +278,24 @@ const TheoryCreate = () => {
                         <Textarea
                           placeholder="When to apply this algorithm/pattern..."
                           {...field}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={control}
+                  name="tags"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Tags</FormLabel>
+                      <FormControl>
+                        <TagInput
+                          value={field.value || []}
+                          onChange={field.onChange}
+                          placeholder="e.g. sorting"
                         />
                       </FormControl>
                       <FormMessage />

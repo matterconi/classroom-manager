@@ -143,6 +143,40 @@ router.get("/", async (req: express.Request, res: express.Response) => {
   }
 });
 
+router.get("/meta", async (_req: express.Request, res: express.Response) => {
+  try {
+    const queryElements = db.selectDistinct({ value: components.element })
+    .from(components)
+    .where(sql`${components.element} IS NOT NULL`);
+
+    const queryDomains = db.selectDistinct({ value: components.domain })
+    .from(components)
+    .where(sql`${components.domain} IS NOT NULL`);
+
+    const queryTags = db.execute(
+      sql`SELECT DISTINCT t.value FROM components, jsonb_array_elements_text(tags) AS t(value) WHERE tags IS NOT NULL ORDER BY t.value`
+    )
+
+    const [elementsRow, domainsRow, tagsRow] = await Promise.all([
+      queryElements,
+      queryDomains,
+      queryTags,
+    ])
+
+    return res.status(200).json({
+      elements: elementsRow.map((r) => r.value),
+      domains: domainsRow.map((r) => r.value),
+      tags: tagsRow.rows.map((r) => r.value),
+    })
+
+  }
+
+  catch (e) {
+    console.error(e);
+    return res.status(500).json({message: "something went wrong"});
+  }
+}); 
+
 router.get("/:id", async (req: express.Request, res: express.Response) => {
   try {
     const id = parseInt(req.params.id as string, 10);
@@ -184,8 +218,8 @@ router.post("/", async (req: express.Request, res: express.Response) => {
   try {
     const {
       name,
-      code,
       element,
+      domain,
       description,
       categoryId,
       useCases,
@@ -201,21 +235,20 @@ router.post("/", async (req: express.Request, res: express.Response) => {
       res.status(400).json({ error: "Name is required" });
       return;
     }
-    if (!code || typeof code !== "string") {
-      res.status(400).json({ error: "Code is required" });
+
+    if (!files || !Array.isArray(files) || files.length === 0) {
+      res.status(400).json({ error: "At least one file is required" });
       return;
     }
 
-    if (files && Array.isArray(files)) {
-      for (const file of files) {
-        if (!file.name || typeof file.name !== "string") {
-          res.status(400).json({ error: "Each file must have a name" });
-          return;
-        }
-        if (!file.code || typeof file.code !== "string") {
-          res.status(400).json({ error: "Each file must have code" });
-          return;
-        }
+    for (const file of files) {
+      if (!file.name || typeof file.name !== "string") {
+        res.status(400).json({ error: "Each file must have a name" });
+        return;
+      }
+      if (!file.code || typeof file.code !== "string") {
+        res.status(400).json({ error: "Each file must have code" });
+        return;
       }
     }
 
@@ -226,8 +259,8 @@ router.post("/", async (req: express.Request, res: express.Response) => {
       .values({
         name,
         slug,
-        code,
         element: element || null,
+        domain: domain || null,
         description: description || null,
         categoryId: categoryId || null,
         useCases: useCases || null,

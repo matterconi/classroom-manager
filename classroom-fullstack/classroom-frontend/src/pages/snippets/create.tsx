@@ -25,6 +25,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { TagInput } from "@/components/ui/tag-input";
 import { Loader2 } from "lucide-react";
 import type { Category } from "@/types";
 import {
@@ -312,6 +313,44 @@ const SnippetCreate = () => {
                     </FormItem>
                   )}
                 />
+
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <FormField
+                    control={control}
+                    name="libraries"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Libraries</FormLabel>
+                        <FormControl>
+                          <TagInput
+                            value={field.value || []}
+                            onChange={field.onChange}
+                            placeholder="e.g. refine"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={control}
+                    name="tags"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Tags</FormLabel>
+                        <FormControl>
+                          <TagInput
+                            value={field.value || []}
+                            onChange={field.onChange}
+                            placeholder="e.g. debounce"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
 
                 <Separator />
 

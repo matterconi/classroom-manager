@@ -28,8 +28,8 @@ export type Component = {
   name: string;
   slug: string;
   element?: string;
+  domain?: string;
   description?: string;
-  code: string;
   useCases?: string;
   libraries?: string[];
   tags?: string[];
@@ -83,6 +83,7 @@ export type Snippet = {
   stack?: string;
   language?: string;
   useCases?: string;
+  libraries?: string[];
   tags?: string[];
   status: "draft" | "published" | "archived";
   category?: Category;

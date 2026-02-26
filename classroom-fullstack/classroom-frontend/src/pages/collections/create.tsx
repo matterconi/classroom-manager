@@ -25,6 +25,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { TagInput } from "@/components/ui/tag-input";
 import { Loader2, Plus, Trash2 } from "lucide-react";
 import type { Category } from "@/types";
 import { COLLECTION_STACK_OPTIONS, STATUS_OPTIONS } from "@/constants";
@@ -222,6 +223,44 @@ const CollectionCreate = () => {
                     </FormItem>
                   )}
                 />
+
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <FormField
+                    control={control}
+                    name="libraries"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Libraries</FormLabel>
+                        <FormControl>
+                          <TagInput
+                            value={field.value || []}
+                            onChange={field.onChange}
+                            placeholder="e.g. express"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={control}
+                    name="tags"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Tags</FormLabel>
+                        <FormControl>
+                          <TagInput
+                            value={field.value || []}
+                            onChange={field.onChange}
+                            placeholder="e.g. auth"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
 
                 <Separator />
 

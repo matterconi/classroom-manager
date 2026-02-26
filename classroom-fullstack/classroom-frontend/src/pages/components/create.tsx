@@ -7,6 +7,7 @@ import { Separator } from "@/components/ui/separator";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "@refinedev/react-hook-form";
+import { useFieldArray } from "react-hook-form";
 import { useAi } from "@/hooks/useAI";
 import { componentSchema } from "@/lib/schema";
 import * as z from "zod";
@@ -27,14 +28,19 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { Loader2 } from "lucide-react";
+import { TagInput } from "@/components/ui/tag-input";
+import { FileDropzone } from "@/components/ui/file-dropzone";
+import { Loader2, Plus, Trash2 } from "lucide-react";
 import type { Category } from "@/types";
-import { ELEMENT_OPTIONS, STATUS_OPTIONS } from "@/constants";
+import { ELEMENT_OPTIONS, DOMAIN_OPTIONS, STATUS_OPTIONS, BACKEND_BASE_URL } from "@/constants";
+import { buildComponentPrompt } from "@/lib/prompts";
+import { useEffect, useMemo } from "react";
 
 const ComponentCreate = () => {
   const back = useBack();
 
   const form = useForm<z.infer<typeof componentSchema>>({
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     resolver: zodResolver(componentSchema) as any,
     refineCoreProps: {
       resource: "components",
@@ -42,6 +48,8 @@ const ComponentCreate = () => {
     },
     defaultValues: {
       status: "draft",
+      files: [{ name: "", code: "" }],
+      entryFile: "",
     },
   });
 
@@ -52,7 +60,52 @@ const ComponentCreate = () => {
     control,
   } = form;
 
+  const { fields, append, remove } = useFieldArray({
+    control,
+    name: "files",
+  });
+
+  const { query: categoriesQuery } = useList<Category>({
+    resource: "categories",
+    pagination: { pageSize: 100 },
+  });
+  const categories = useMemo(() => categoriesQuery?.data?.data || [], [categoriesQuery]);
+
   const { generate, result, isLoading } = useAi();
+
+  useEffect(() => {
+    if (!result) return;
+
+    const cleaned = result
+      .replace(/```json\n?/g, "")
+      .replace(/```\n?/g, "")
+      .trim();
+    
+    try {
+      const parsed = JSON.parse(cleaned);
+
+      if (parsed.description) form.setValue("description", parsed.description);
+      if (parsed.useCases) form.setValue("useCases", parsed.useCases);
+      if (parsed.element) form.setValue("element", parsed.element);
+      if (parsed.domain) form.setValue("domain", parsed.domain);
+      if (parsed.libraries?.length) form.setValue("libraries", parsed.libraries);
+      if (parsed.tags?.length) form.setValue("tags", parsed.tags);
+      if (parsed.entryFile) form.setValue("entryFile", parsed.entryFile);
+
+      const match = categories.find(
+        (c) => c.name.toLowerCase() === parsed.category?.toLowerCase()
+      );
+      if (match) {
+        form.setValue("categoryId", match.id);
+      } else if (parsed.category) {
+        console.warn(`Category "${parsed.category}" not found in existing categories`);
+      }
+    } catch (e) {
+      console.error("Failed to parse AI result:", e);
+      return;
+    }
+
+  }, [result, form, categories])
 
   const onSubmit = async (values: Record<string, unknown>) => {
     try {
@@ -63,18 +116,32 @@ const ComponentCreate = () => {
     }
   };
 
-  const { query: categoriesQuery } = useList<Category>({
-    resource: "categories",
-    pagination: { pageSize: 100 },
-  });
-  const categories = categoriesQuery?.data?.data || [];
-
-  const handleGenerate = () => {
+  const handleGenerate = async () => {
     const name = form.getValues("name");
-    const code = form.getValues("code");
-    const prompt = `TODO`;
+    const files = form.getValues("files");
+    const res = await fetch(`${BACKEND_BASE_URL}/api/components/meta`);
+    const meta = await res.json();
+
+    const prompt = buildComponentPrompt(name, files, {
+      ...meta,
+      categories: categories.map((c) => c.name),
+    });
     generate(prompt);
-  }
+  };
+
+  const handleFilesAdded = (newFiles: { name: string; code: string }[]) => {
+    const currentFiles = form.getValues("files");
+    if (
+      currentFiles.length === 1 &&
+      !currentFiles[0].name &&
+      !currentFiles[0].code
+    ) {
+      remove(0);
+    }
+    for (const file of newFiles) {
+      append(file);
+    }
+  };
 
   return (
     <CreateView>
@@ -82,7 +149,7 @@ const ComponentCreate = () => {
 
       <h1 className="page-title">Create a Component</h1>
       <div className="intro-row">
-        <p>Add name and code. All other fields are optional.</p>
+        <p>Add name and files. All other fields are optional.</p>
         <Button onClick={() => back()}>Go Back</Button>
       </div>
 
@@ -118,27 +185,7 @@ const ComponentCreate = () => {
                   )}
                 />
 
-                <FormField
-                  control={control}
-                  name="code"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>
-                        Code <span className="text-orange-600">*</span>
-                      </FormLabel>
-                      <FormControl>
-                        <Textarea
-                          placeholder="Paste your code here..."
-                          className="min-h-[300px] font-mono text-sm"
-                          {...field}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <div className="grid gap-4 sm:grid-cols-3">
+                <div className="grid gap-4 sm:grid-cols-2">
                   <FormField
                     control={control}
                     name="element"
@@ -156,6 +203,34 @@ const ComponentCreate = () => {
                           </FormControl>
                           <SelectContent>
                             {ELEMENT_OPTIONS.map((opt) => (
+                              <SelectItem key={opt.value} value={opt.value}>
+                                {opt.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={control}
+                    name="domain"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Domain</FormLabel>
+                        <Select
+                          onValueChange={field.onChange}
+                          value={field.value}
+                        >
+                          <FormControl>
+                            <SelectTrigger className="w-full">
+                              <SelectValue placeholder="Select domain" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {DOMAIN_OPTIONS.map((opt) => (
                               <SelectItem key={opt.value} value={opt.value}>
                                 {opt.label}
                               </SelectItem>
@@ -262,6 +337,155 @@ const ComponentCreate = () => {
                     </FormItem>
                   )}
                 />
+
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <FormField
+                    control={control}
+                    name="libraries"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Libraries</FormLabel>
+                        <FormControl>
+                          <TagInput
+                            value={field.value || []}
+                            onChange={field.onChange}
+                            placeholder="e.g. framer-motion"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={control}
+                    name="tags"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Tags</FormLabel>
+                        <FormControl>
+                          <TagInput
+                            value={field.value || []}
+                            onChange={field.onChange}
+                            placeholder="e.g. animation"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+
+                <Separator />
+
+                {/* Files section */}
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-lg font-semibold">
+                      Files <span className="text-orange-600">*</span>
+                    </h3>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => append({ name: "", code: "" })}
+                    >
+                      <Plus className="mr-1 h-4 w-4" /> Add File
+                    </Button>
+                  </div>
+
+                  <FileDropzone onFilesAdded={handleFilesAdded} />
+
+                  {fields.map((fieldItem, index) => (
+                    <Card key={fieldItem.id} className="p-4">
+                      <div className="mb-3 flex items-center justify-between">
+                        <span className="text-sm font-medium text-muted-foreground">
+                          File {index + 1}
+                        </span>
+                        {fields.length > 1 && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => remove(index)}
+                          >
+                            <Trash2 className="h-4 w-4 text-destructive" />
+                          </Button>
+                        )}
+                      </div>
+
+                      <div className="space-y-3">
+                        <FormField
+                          control={control}
+                          name={`files.${index}.name`}
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>File Name</FormLabel>
+                              <FormControl>
+                                <Input
+                                  placeholder="e.g. AnimatedCard.tsx"
+                                  {...field}
+                                />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+
+                        <FormField
+                          control={control}
+                          name={`files.${index}.code`}
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Code</FormLabel>
+                              <FormControl>
+                                <Textarea
+                                  placeholder="Paste code here..."
+                                  className="min-h-[200px] font-mono text-sm"
+                                  {...field}
+                                />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                      </div>
+                    </Card>
+                  ))}
+
+                  <FormField
+                    control={control}
+                    name="entryFile"
+                    render={({ field: entryField }) => (
+                      <FormItem>
+                        <FormLabel>Entry File</FormLabel>
+                        <Select
+                          onValueChange={entryField.onChange}
+                          value={entryField.value}
+                        >
+                          <FormControl>
+                            <SelectTrigger className="w-full">
+                              <SelectValue placeholder="Select entry file for preview" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {fields.map((f, i) => {
+                              const fileName = form.getValues(`files.${i}.name`);
+                              return fileName ? (
+                                <SelectItem key={f.id} value={fileName}>
+                                  {fileName}
+                                </SelectItem>
+                              ) : null;
+                            })}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+
+                <AIButton onGenerate={handleGenerate} isLoading={isLoading} />
 
                 <Separator />
 
