@@ -32,7 +32,7 @@ import { TagInput } from "@/components/ui/tag-input";
 import { FileDropzone } from "@/components/ui/file-dropzone";
 import { Loader2, Plus, Trash2 } from "lucide-react";
 import type { Category } from "@/types";
-import { ELEMENT_OPTIONS, DOMAIN_OPTIONS, STATUS_OPTIONS, BACKEND_BASE_URL } from "@/constants";
+import { COMPONENT_TYPE_OPTIONS, DOMAIN_OPTIONS, STATUS_OPTIONS, BACKEND_BASE_URL } from "@/constants";
 import { buildComponentPrompt } from "@/lib/prompts";
 import { useEffect, useMemo } from "react";
 
@@ -68,6 +68,7 @@ const ComponentCreate = () => {
   const { query: categoriesQuery } = useList<Category>({
     resource: "categories",
     pagination: { pageSize: 100 },
+    filters: [{ field: "resource", operator: "eq", value: "components" }],
   });
   const categories = useMemo(() => categoriesQuery?.data?.data || [], [categoriesQuery]);
 
@@ -86,7 +87,7 @@ const ComponentCreate = () => {
 
       if (parsed.description) form.setValue("description", parsed.description);
       if (parsed.useCases) form.setValue("useCases", parsed.useCases);
-      if (parsed.element) form.setValue("element", parsed.element);
+      if (parsed.type) form.setValue("type", parsed.type);
       if (parsed.domain) form.setValue("domain", parsed.domain);
       if (parsed.libraries?.length) form.setValue("libraries", parsed.libraries);
       if (parsed.tags?.length) form.setValue("tags", parsed.tags);
@@ -188,21 +189,21 @@ const ComponentCreate = () => {
                 <div className="grid gap-4 sm:grid-cols-2">
                   <FormField
                     control={control}
-                    name="element"
+                    name="type"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Element</FormLabel>
+                        <FormLabel>Type</FormLabel>
                         <Select
                           onValueChange={field.onChange}
                           value={field.value}
                         >
                           <FormControl>
                             <SelectTrigger className="w-full">
-                              <SelectValue placeholder="Select element" />
+                              <SelectValue placeholder="Select type" />
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
-                            {ELEMENT_OPTIONS.map((opt) => (
+                            {COMPONENT_TYPE_OPTIONS.map((opt) => (
                               <SelectItem key={opt.value} value={opt.value}>
                                 {opt.label}
                               </SelectItem>

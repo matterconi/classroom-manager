@@ -1,4 +1,4 @@
-export const ELEMENT_OPTIONS = [
+export const COMPONENT_TYPE_OPTIONS = [
   { value: "button", label: "Button" },
   { value: "card", label: "Card" },
   { value: "input", label: "Input" },
@@ -49,6 +49,17 @@ export const DOMAIN_OPTIONS = [
   { value: "real-time", label: "Real-time" },
   { value: "testing", label: "Testing" },
   { value: "security", label: "Security" },
+] as const;
+
+export const SNIPPET_TYPE_OPTIONS = [
+  { value: "hook", label: "Hook" },
+  { value: "utility", label: "Utility" },
+  { value: "route", label: "Route" },
+  { value: "middleware", label: "Middleware" },
+  { value: "helper", label: "Helper" },
+  { value: "config", label: "Config" },
+  { value: "handler", label: "Handler" },
+  { value: "validator", label: "Validator" },
 ] as const;
 
 export const SNIPPET_STACK_OPTIONS = [

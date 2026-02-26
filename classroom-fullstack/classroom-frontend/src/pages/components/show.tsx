@@ -28,20 +28,12 @@ import {
 
 const ComponentShow = () => {
   const { query } = useShow<Component>({ resource: "components" });
-  const [copied, setCopied] = useState(false);
   const [variantSelections, setVariantSelections] = useState<
     Record<string, string>
   >({});
 
   const record = query?.data?.data;
   const isLoading = query?.isLoading;
-
-  const handleCopy = async () => {
-    if (!record?.code) return;
-    await navigator.clipboard.writeText(record.code);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
 
   if (isLoading) {
     return (
@@ -73,8 +65,6 @@ const ComponentShow = () => {
       for (const f of record.files!) {
         files[`/${f.name}`] = f.code;
       }
-    } else {
-      files["/App.tsx"] = record.code;
     }
 
     // If variants are defined, generate a wrapper that renders with selected props
@@ -113,8 +103,8 @@ const ComponentShow = () => {
           <div className="flex items-center justify-between">
             <CardTitle className="text-2xl">{record.name}</CardTitle>
             <div className="flex gap-2">
-              {record.element && (
-                <Badge variant="secondary">{record.element}</Badge>
+              {record.type && (
+                <Badge variant="secondary">{record.type}</Badge>
               )}
               <Badge>{record.status}</Badge>
             </div>
@@ -174,9 +164,8 @@ const ComponentShow = () => {
       )}
 
       {/* Tabs: Code | Files | Preview */}
-      <Tabs defaultValue={hasFiles ? "files" : "code"} className="mt-4">
+      <Tabs defaultValue="files" className="mt-4">
         <TabsList>
-          {!hasFiles && <TabsTrigger value="code">Code</TabsTrigger>}
           {hasFiles && (
             <TabsTrigger value="files">
               Files ({record.files!.length})
@@ -185,38 +174,6 @@ const ComponentShow = () => {
           <TabsTrigger value="preview">Live Preview</TabsTrigger>
         </TabsList>
 
-        {!hasFiles && (
-          <TabsContent value="code">
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between">
-                <CardTitle className="text-lg">Source Code</CardTitle>
-                <Button variant="outline" size="sm" onClick={handleCopy}>
-                  {copied ? (
-                    <>
-                      <Check className="mr-1 h-4 w-4" /> Copied
-                    </>
-                  ) : (
-                    <>
-                      <Copy className="mr-1 h-4 w-4" /> Copy
-                    </>
-                  )}
-                </Button>
-              </CardHeader>
-              <CardContent>
-                <SyntaxHighlighter
-                  language="tsx"
-                  style={oneDark}
-                  customStyle={{
-                    borderRadius: "0.5rem",
-                    fontSize: "0.875rem",
-                  }}
-                >
-                  {record.code}
-                </SyntaxHighlighter>
-              </CardContent>
-            </Card>
-          </TabsContent>
-        )}
 
         {hasFiles && (
           <TabsContent value="files">

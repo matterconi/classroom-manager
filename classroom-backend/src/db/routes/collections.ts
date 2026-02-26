@@ -15,6 +15,7 @@ import {
   collectionFiles,
   categories,
 } from "../schema/index.js";
+import { generateEmbedding } from "../../lib/embeddings.js";
 
 const LIMIT_MAX = 100;
 const SEARCH_MAX_LENGTH = 100;
@@ -34,6 +35,7 @@ router.get("/", async (req: express.Request, res: express.Response) => {
     const {
       search,
       status,
+      domain,
       stack,
       categoryId,
       library,
@@ -62,6 +64,8 @@ router.get("/", async (req: express.Request, res: express.Response) => {
       }
       filterConditions.push(
         or(
+          sql`to_tsvector('english', coalesce(${collections.name}, '') || ' ' || coalesce(${collections.description}, ''))
+            @@ websearch_to_tsquery('english', ${trimmedSearch})`,
           ilike(collections.name, `%${trimmedSearch}%`),
           ilike(collections.description, `%${trimmedSearch}%`),
         ),
@@ -76,6 +80,14 @@ router.get("/", async (req: express.Request, res: express.Response) => {
       filterConditions.push(
         eq(collections.status, status as (typeof STATUS_VALUES)[number]),
       );
+    }
+
+    if (domain) {
+      if (typeof domain !== "string") {
+        res.status(400).json({ error: "Invalid domain" });
+        return;
+      }
+      filterConditions.push(eq(collections.domain, domain));
     }
 
     if (stack) {
@@ -190,6 +202,7 @@ router.post("/", async (req: express.Request, res: express.Response) => {
       name,
       description,
       categoryId,
+      domain,
       stack,
       libraries,
       tags,
@@ -228,6 +241,7 @@ router.post("/", async (req: express.Request, res: express.Response) => {
         slug,
         description: description || null,
         categoryId: categoryId || null,
+        domain: domain || null,
         stack: stack || null,
         libraries: libraries || null,
         tags: tags || null,
@@ -253,6 +267,14 @@ router.post("/", async (req: express.Request, res: express.Response) => {
     );
 
     await db.insert(collectionFiles).values(fileValues);
+
+    // Generate embedding (non-blocking)
+    const embeddingText = [name, description, domain, stack, tags?.join(" "), libraries?.join(" ")].filter(Boolean).join(" ");
+    generateEmbedding(embeddingText)
+      .then((embedding) =>
+        db.update(collections).set({ embedding }).where(eq(collections.id, created.id)),
+      )
+      .catch((err) => console.error("Embedding generation failed:", err));
 
     res.status(201).json({ data: created });
   } catch (e) {

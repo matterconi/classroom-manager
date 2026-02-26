@@ -4,6 +4,7 @@ export type Category = {
   slug: string;
   description?: string;
   icon?: string;
+  resource?: string;
   createdAt?: string;
 };
 
@@ -27,7 +28,7 @@ export type Component = {
   categoryId?: number;
   name: string;
   slug: string;
-  element?: string;
+  type?: string;
   domain?: string;
   description?: string;
   useCases?: string;
@@ -49,6 +50,7 @@ export type Collection = {
   name: string;
   slug: string;
   description?: string;
+  domain?: string;
   stack?: "frontend" | "backend" | "fullstack";
   libraries?: string[];
   tags?: string[];
@@ -79,6 +81,7 @@ export type Snippet = {
   slug: string;
   description?: string;
   code: string;
+  type?: string;
   domain?: string;
   stack?: string;
   language?: string;
@@ -99,6 +102,7 @@ export type Theory = {
   description?: string;
   code: string;
   type?: "algorithm" | "data-structure" | "design-pattern";
+  domain?: string;
   complexity?: string;
   useCases?: string;
   tags?: string[];

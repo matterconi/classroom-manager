@@ -8,6 +8,13 @@
       "when": 1771511373386,
       "tag": "0000_woozy_wrecking_crew",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1771511373387,
+      "tag": "0005_full_text_search",
+      "breakpoints": true
     }
   ]
 }

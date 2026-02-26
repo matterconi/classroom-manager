@@ -10,6 +10,7 @@ import {
 } from "drizzle-orm";
 import { db } from "../index.js";
 import { theory, categories } from "../schema/index.js";
+import { generateEmbedding } from "../../lib/embeddings.js";
 
 const LIMIT_MAX = 100;
 const SEARCH_MAX_LENGTH = 100;
@@ -30,6 +31,7 @@ router.get("/", async (req: express.Request, res: express.Response) => {
       search,
       status,
       type,
+      domain,
       complexity,
       categoryId,
       page = 1,
@@ -57,6 +59,8 @@ router.get("/", async (req: express.Request, res: express.Response) => {
       }
       filterConditions.push(
         or(
+          sql`to_tsvector('english', coalesce(${theory.name}, '') || ' ' || coalesce(${theory.description}, '') || ' ' || coalesce(${theory.useCases}, ''))
+            @@ websearch_to_tsquery('english', ${trimmedSearch})`,
           ilike(theory.name, `%${trimmedSearch}%`),
           ilike(theory.description, `%${trimmedSearch}%`),
         ),
@@ -81,6 +85,14 @@ router.get("/", async (req: express.Request, res: express.Response) => {
       filterConditions.push(
         eq(theory.type, type as (typeof TYPE_VALUES)[number]),
       );
+    }
+
+    if (domain) {
+      if (typeof domain !== "string") {
+        res.status(400).json({ error: "Invalid domain" });
+        return;
+      }
+      filterConditions.push(eq(theory.domain, domain));
     }
 
     if (complexity) {
@@ -176,6 +188,7 @@ router.post("/", async (req: express.Request, res: express.Response) => {
       description,
       categoryId,
       type,
+      domain,
       complexity,
       useCases,
       tags,
@@ -203,12 +216,21 @@ router.post("/", async (req: express.Request, res: express.Response) => {
         description: description || null,
         categoryId: categoryId || null,
         type: type || null,
+        domain: domain || null,
         complexity: complexity || null,
         useCases: useCases || null,
         tags: tags || null,
         status: status || "draft",
       })
       .returning();
+
+    // Generate embedding (non-blocking)
+    const embeddingText = [name, description, useCases, type, domain, complexity, tags?.join(" ")].filter(Boolean).join(" ");
+    generateEmbedding(embeddingText)
+      .then((embedding) =>
+        db.update(theory).set({ embedding }).where(eq(theory.id, created!.id)),
+      )
+      .catch((err) => console.error("Embedding generation failed:", err));
 
     res.status(201).json({ data: created });
   } catch (e) {

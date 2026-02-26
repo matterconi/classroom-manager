@@ -1,7 +1,11 @@
-const EXAMPLE_ELEMENTS = [
+const EXAMPLE_COMPONENT_TYPES = [
   "button", "card", "input", "form", "modal", "navbar", "sidebar", "hero",
   "layout", "carousel", "tabs", "accordion", "toast", "tooltip", "dropdown",
   "badge", "loader", "background", "scene", "text", "table", "avatar",
+];
+
+const EXAMPLE_SNIPPET_TYPES = [
+  "hook", "utility", "route", "middleware", "helper", "config", "handler", "validator",
 ];
 
 const EXAMPLE_DOMAINS = [
@@ -16,7 +20,7 @@ const EXAMPLE_COMPLEXITIES = ["O(1)", "O(log n)", "O(n)", "O(n log n)", "O(n^2)"
 // ── Meta type (from /api/components/meta) ────────────────────────────────────
 
 export type ResourceMeta = {
-  elements?: string[];
+  types?: string[];
   domains?: string[];
   tags?: string[];
   categories: string[];
@@ -78,7 +82,7 @@ Return JSON with exactly these fields:
 {
   "description": "string",
   "useCases": "string",
-  "element": "string",
+  "type": "string",
   "domain": "string",
   "category": "string",
   "libraries": ["string"],
@@ -87,7 +91,7 @@ Return JSON with exactly these fields:
 }
 
 ${JSON_RULES}
-- "element": WHAT type of UI element this is (e.g. button, card, modal). ${buildExistingValuesBlock("ELEMENTS", "element", meta.elements || [], EXAMPLE_ELEMENTS)}
+- "type": WHAT type of UI element this is (e.g. button, card, modal). ${buildExistingValuesBlock("TYPES", "type", meta.types || [], EXAMPLE_COMPONENT_TYPES)}
 - "domain": the functional area this component belongs to, bridging element and category (e.g. "navigation", "data-entry", "feedback", "visualization"). ${buildExistingValuesBlock("DOMAINS", "domain", meta.domains || [], EXAMPLE_DOMAINS)}
 - "category": WHICH broad frontend area this belongs to (e.g. Animations, 3D, Layout). This is NOT the element type or domain.
 - "entryFile": the filename (from the provided files) that serves as the main entry point — typically the one with the default export. Must match one of the file names exactly.
@@ -113,6 +117,7 @@ Return JSON with exactly these fields:
 {
   "description": "string",
   "useCases": "string",
+  "type": "string",
   "domain": "string",
   "stack": "string",
   "language": "string",
@@ -122,6 +127,7 @@ Return JSON with exactly these fields:
 }
 
 ${JSON_RULES}
+- "type": WHAT kind of snippet this is (e.g. hook, utility, middleware). Prefer one of these if it fits: ${EXAMPLE_SNIPPET_TYPES.join(", ")}. You may suggest a new one if nothing matches.
 - "domain": the functional area of this snippet. ${buildExistingValuesBlock("DOMAINS", "domain", meta.domains || [], EXAMPLE_DOMAINS)}
 - "stack": "frontend" or "backend".
 - "language": detect from the code. Common values: typescript, javascript, python, sql, css, html, shell.
@@ -149,6 +155,7 @@ Return JSON with exactly these fields:
   "description": "string",
   "useCases": "string",
   "type": "string",
+  "domain": "string",
   "complexity": "string",
   "category": "string",
   "tags": ["string"]
@@ -158,6 +165,7 @@ ${JSON_RULES}
 - "description": explain what this algorithm/pattern/data structure is and how it works.
 - "useCases": when and why you would use this in real-world applications.
 - "type": prefer one of these if it fits: ${EXAMPLE_THEORY_TYPES.join(", ")}. You may suggest a new one if nothing matches.
+- "domain": the specific CS sub-area (e.g. "sorting", "graph-traversal", "creational-patterns"). ${buildExistingValuesBlock("DOMAINS", "domain", meta.domains || [], EXAMPLE_DOMAINS)}
 - "complexity": prefer one of these if it fits: ${EXAMPLE_COMPLEXITIES.join(", ")}. If not applicable, use "O(n)".
 - "category": WHICH broad CS area this belongs to. This is NOT the type.
 ${buildCategoryBlock(meta.categories)}
@@ -184,15 +192,19 @@ ${filesBlock}
 Return JSON with exactly these fields:
 {
   "description": "string",
+  "domain": "string",
   "stack": "string",
   "category": "string",
   "libraries": ["string"],
-  "tags": ["string"]
+  "tags": ["string"],
+  "entryFile": "string"
 }
 
 ${JSON_RULES}
+- "domain": the functional area of this collection. ${buildExistingValuesBlock("DOMAINS", "domain", meta.domains || [], EXAMPLE_DOMAINS)}
 - "stack": "frontend", "backend", or "fullstack". Determine from the code context.
 - "category": WHICH broad area this belongs to.
+- "entryFile": the filename (from the provided files) that serves as the main entry point — typically the one with the default export. Must match one of the file names exactly.
 ${buildCategoryBlock(meta.categories)}
 ${buildTagsBlock(meta.tags || [])}`;
 }

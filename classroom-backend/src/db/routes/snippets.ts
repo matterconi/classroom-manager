@@ -10,6 +10,7 @@ import {
 } from "drizzle-orm";
 import { db } from "../index.js";
 import { snippets, categories } from "../schema/index.js";
+import { generateEmbedding } from "../../lib/embeddings.js";
 
 const LIMIT_MAX = 100;
 const SEARCH_MAX_LENGTH = 100;
@@ -28,6 +29,7 @@ router.get("/", async (req: express.Request, res: express.Response) => {
     const {
       search,
       status,
+      type,
       domain,
       stack,
       language,
@@ -57,6 +59,8 @@ router.get("/", async (req: express.Request, res: express.Response) => {
       }
       filterConditions.push(
         or(
+          sql`to_tsvector('english', coalesce(${snippets.name}, '') || ' ' || coalesce(${snippets.description}, '') || ' ' || coalesce(${snippets.useCases}, ''))
+            @@ websearch_to_tsquery('english', ${trimmedSearch})`,
           ilike(snippets.name, `%${trimmedSearch}%`),
           ilike(snippets.description, `%${trimmedSearch}%`),
         ),
@@ -71,6 +75,14 @@ router.get("/", async (req: express.Request, res: express.Response) => {
       filterConditions.push(
         eq(snippets.status, status as (typeof STATUS_VALUES)[number]),
       );
+    }
+
+    if (type) {
+      if (typeof type !== "string") {
+        res.status(400).json({ error: "Invalid type" });
+        return;
+      }
+      filterConditions.push(eq(snippets.type, type));
     }
 
     if (domain) {
@@ -181,10 +193,12 @@ router.post("/", async (req: express.Request, res: express.Response) => {
       code,
       description,
       categoryId,
+      type,
       domain,
       stack,
       language,
       useCases,
+      libraries,
       tags,
       status,
     } = req.body;
@@ -209,6 +223,7 @@ router.post("/", async (req: express.Request, res: express.Response) => {
         code,
         description: description || null,
         categoryId: categoryId || null,
+        type: type || null,
         domain: domain || null,
         stack: stack || null,
         language: language || null,
@@ -217,6 +232,14 @@ router.post("/", async (req: express.Request, res: express.Response) => {
         status: status || "draft",
       })
       .returning();
+
+    // Generate embedding (non-blocking)
+    const embeddingText = [name, description, useCases, domain, stack, language, tags?.join(" "), libraries?.join(" ")].filter(Boolean).join(" ");
+    generateEmbedding(embeddingText)
+      .then((embedding) =>
+        db.update(snippets).set({ embedding }).where(eq(snippets.id, created!.id)),
+      )
+      .catch((err) => console.error("Embedding generation failed:", err));
 
     res.status(201).json({ data: created });
   } catch (e) {

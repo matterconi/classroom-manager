@@ -18,11 +18,11 @@ import { ColumnDef } from "@tanstack/react-table";
 import { useTable } from "@refinedev/react-table";
 import { useList } from "@refinedev/core";
 import type { Component, Category } from "@/types";
-import { ELEMENT_OPTIONS, STATUS_OPTIONS } from "@/constants";
+import { COMPONENT_TYPE_OPTIONS, STATUS_OPTIONS } from "@/constants";
 
 const ComponentsList = () => {
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedElement, setSelectedElement] = useState("all");
+  const [selectedType, setSelectedType] = useState("all");
   const [selectedStatus, setSelectedStatus] = useState("all");
   const [selectedCategory, setSelectedCategory] = useState("all");
 
@@ -36,8 +36,8 @@ const ComponentsList = () => {
     ...(searchQuery
       ? [{ field: "name", operator: "contains" as const, value: searchQuery }]
       : []),
-    ...(selectedElement !== "all"
-      ? [{ field: "element", operator: "eq" as const, value: selectedElement }]
+    ...(selectedType !== "all"
+      ? [{ field: "type", operator: "eq" as const, value: selectedType }]
       : []),
     ...(selectedStatus !== "all"
       ? [{ field: "status", operator: "eq" as const, value: selectedStatus }]
@@ -68,10 +68,10 @@ const ComponentsList = () => {
           ),
         },
         {
-          id: "element",
-          accessorKey: "element",
+          id: "type",
+          accessorKey: "type",
           size: 100,
-          header: () => <p className="column-title">Element</p>,
+          header: () => <p className="column-title">Type</p>,
           cell: ({ getValue }) => {
             const val = getValue<string>();
             return val ? <Badge variant="outline">{val}</Badge> : <span>—</span>;
@@ -167,13 +167,13 @@ const ComponentsList = () => {
             />
           </div>
           <div className="flex w-full flex-wrap gap-2 sm:w-auto">
-            <Select value={selectedElement} onValueChange={setSelectedElement}>
+            <Select value={selectedType} onValueChange={setSelectedType}>
               <SelectTrigger className="w-[130px]">
-                <SelectValue placeholder="Element" />
+                <SelectValue placeholder="Type" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All Elements</SelectItem>
-                {ELEMENT_OPTIONS.map((opt) => (
+                <SelectItem value="all">All Types</SelectItem>
+                {COMPONENT_TYPE_OPTIONS.map((opt) => (
                   <SelectItem value={opt.value} key={opt.value}>
                     {opt.label}
                   </SelectItem>

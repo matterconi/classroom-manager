@@ -15,6 +15,7 @@ import {
   componentFiles,
   categories,
 } from "../schema/index.js";
+import { generateEmbedding } from "../../lib/embeddings.js";
 
 const LIMIT_MAX = 100;
 const SEARCH_MAX_LENGTH = 100;
@@ -33,7 +34,7 @@ router.get("/", async (req: express.Request, res: express.Response) => {
     const {
       search,
       status,
-      element,
+      type,
       categoryId,
       library,
       page = 1,
@@ -61,6 +62,8 @@ router.get("/", async (req: express.Request, res: express.Response) => {
       }
       filterConditions.push(
         or(
+          sql`to_tsvector('english', coalesce(${components.name}, '') || ' ' || coalesce(${components.description}, '') || ' ' || coalesce(${components.useCases}, ''))
+            @@ websearch_to_tsquery('english', ${trimmedSearch})`,
           ilike(components.name, `%${trimmedSearch}%`),
           ilike(components.description, `%${trimmedSearch}%`),
         ),
@@ -77,12 +80,12 @@ router.get("/", async (req: express.Request, res: express.Response) => {
       );
     }
 
-    if (element) {
-      if (typeof element !== "string") {
-        res.status(400).json({ error: "Invalid element" });
+    if (type) {
+      if (typeof type !== "string") {
+        res.status(400).json({ error: "Invalid type" });
         return;
       }
-      filterConditions.push(eq(components.element, element));
+      filterConditions.push(eq(components.type, type));
     }
 
     if (categoryId) {
@@ -145,9 +148,9 @@ router.get("/", async (req: express.Request, res: express.Response) => {
 
 router.get("/meta", async (_req: express.Request, res: express.Response) => {
   try {
-    const queryElements = db.selectDistinct({ value: components.element })
+    const queryTypes = db.selectDistinct({ value: components.type })
     .from(components)
-    .where(sql`${components.element} IS NOT NULL`);
+    .where(sql`${components.type} IS NOT NULL`);
 
     const queryDomains = db.selectDistinct({ value: components.domain })
     .from(components)
@@ -157,14 +160,14 @@ router.get("/meta", async (_req: express.Request, res: express.Response) => {
       sql`SELECT DISTINCT t.value FROM components, jsonb_array_elements_text(tags) AS t(value) WHERE tags IS NOT NULL ORDER BY t.value`
     )
 
-    const [elementsRow, domainsRow, tagsRow] = await Promise.all([
-      queryElements,
+    const [typesRow, domainsRow, tagsRow] = await Promise.all([
+      queryTypes,
       queryDomains,
       queryTags,
     ])
 
     return res.status(200).json({
-      elements: elementsRow.map((r) => r.value),
+      types: typesRow.map((r) => r.value),
       domains: domainsRow.map((r) => r.value),
       tags: tagsRow.rows.map((r) => r.value),
     })
@@ -218,7 +221,7 @@ router.post("/", async (req: express.Request, res: express.Response) => {
   try {
     const {
       name,
-      element,
+      type,
       domain,
       description,
       categoryId,
@@ -259,7 +262,7 @@ router.post("/", async (req: express.Request, res: express.Response) => {
       .values({
         name,
         slug,
-        element: element || null,
+        type: type || null,
         domain: domain || null,
         description: description || null,
         categoryId: categoryId || null,
@@ -289,12 +292,17 @@ router.post("/", async (req: express.Request, res: express.Response) => {
       );
       await db.insert(componentFiles).values(fileValues);
     }
+    const embeddingText = [name, description, useCases, type, domain, tags?.join(" "), libraries?.join(" ")].filter(Boolean).join(" ");
+    generateEmbedding(embeddingText)
+      .then((embedding) => 
+        db.update(components).set({ embedding }).where(eq(components.id, created.id)),
+      ).catch((err) => console.error("Embedding generation failed:", err));
 
-    res.status(201).json({ data: created });
-  } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: "Internal server error" });
-  }
+      res.status(201).json({ data: created });
+    } catch (e) {
+      console.error(e);
+      res.status(500).json({ error: "Internal server error" });
+    }
 });
 
 export default router;

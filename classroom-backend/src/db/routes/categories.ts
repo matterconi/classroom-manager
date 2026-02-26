@@ -1,4 +1,4 @@
-import { ilike, or, and, sql, desc } from "drizzle-orm";
+import { ilike, or, and, eq, sql, desc } from "drizzle-orm";
 import express from "express";
 import { db } from "../index.js";
 import { categories } from "../schema/index.js";
@@ -15,7 +15,7 @@ function slugify(text: string): string {
 
 router.get("/", async (req: express.Request, res: express.Response) => {
   try {
-    const { search, page = 1, limit = 10 } = req.query;
+    const { search, resource, page = 1, limit = 10 } = req.query;
 
     const currentPage = Math.max(1, parseInt(page as string, 10));
     const limitPerPage = Math.min(
@@ -25,6 +25,10 @@ router.get("/", async (req: express.Request, res: express.Response) => {
     const offset = (currentPage - 1) * limitPerPage;
 
     const filterConditions = [];
+
+    if (resource && typeof resource === "string") {
+      filterConditions.push(eq(categories.resource, resource));
+    }
 
     if (search) {
       if (typeof search !== "string" || search.length > SEARCH_MAX_LENGTH) {
@@ -79,7 +83,7 @@ router.get("/", async (req: express.Request, res: express.Response) => {
 
 router.post("/", async (req: express.Request, res: express.Response) => {
   try {
-    const { name, description, icon } = req.body;
+    const { name, description, icon, resource } = req.body;
 
     if (!name || typeof name !== "string") {
       res.status(400).json({ error: "Name is required" });
@@ -90,7 +94,7 @@ router.post("/", async (req: express.Request, res: express.Response) => {
 
     const [created] = await db
       .insert(categories)
-      .values({ name, slug, description, icon })
+      .values({ name, slug, description, icon, resource: resource || null })
       .returning({ id: categories.id });
 
     if (!created) {

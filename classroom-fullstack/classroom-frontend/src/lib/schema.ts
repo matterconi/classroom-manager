@@ -4,6 +4,7 @@ export const categorySchema = z.object({
   name: z.string().min(2, "Name must be at least 2 characters"),
   description: z.string().optional(),
   icon: z.string().optional(),
+  resource: z.string().optional(),
 });
 
 const componentFileSchema = z.object({
@@ -18,7 +19,7 @@ const variantSchema = z.object({
 
 export const componentSchema = z.object({
   name: z.string().min(2, "Name must be at least 2 characters"),
-  element: z.string().optional(),
+  type: z.string().optional(),
   domain: z.string().optional(),
   description: z.string().optional(),
   categoryId: z.coerce.number().optional(),
@@ -41,6 +42,7 @@ export const collectionSchema = z.object({
   name: z.string().min(2, "Name must be at least 2 characters"),
   description: z.string().optional(),
   categoryId: z.coerce.number().optional(),
+  domain: z.string().optional(),
   stack: z.enum(["frontend", "backend", "fullstack"]).optional(),
   libraries: z.array(z.string()).optional(),
   tags: z.array(z.string()).optional(),
@@ -56,6 +58,7 @@ export const snippetSchema = z.object({
   code: z.string().min(1, "Code is required"),
   description: z.string().optional(),
   categoryId: z.coerce.number().optional(),
+  type: z.string().optional(),
   domain: z.string().optional(),
   stack: z.string().optional(),
   language: z.string().optional(),
@@ -71,6 +74,7 @@ export const theorySchema = z.object({
   description: z.string().optional(),
   categoryId: z.coerce.number().optional(),
   type: z.enum(["algorithm", "data-structure", "design-pattern"]).optional(),
+  domain: z.string().optional(),
   complexity: z.string().optional(),
   useCases: z.string().optional(),
   tags: z.array(z.string()).optional(),

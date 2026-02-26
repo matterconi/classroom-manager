@@ -1,11 +1,13 @@
 import { CreateView } from "@/components/refine-ui/views/create-view";
 import { Breadcrumb } from "@/components/refine-ui/layout/breadcrumb";
 import { Button } from "@/components/ui/button";
+import AIButton from "@/components/ui/ai-input";
 import { useBack, useList } from "@refinedev/core";
 import { Separator } from "@/components/ui/separator";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "@refinedev/react-hook-form";
+import { useAi } from "@/hooks/useAI";
 import { theorySchema } from "@/lib/schema";
 import * as z from "zod";
 import {
@@ -30,9 +32,12 @@ import { Loader2 } from "lucide-react";
 import type { Category } from "@/types";
 import {
   THEORY_TYPE_OPTIONS,
+  DOMAIN_OPTIONS,
   COMPLEXITY_OPTIONS,
   STATUS_OPTIONS,
 } from "@/constants";
+import { buildTheoryPrompt } from "@/lib/prompts";
+import { useEffect, useMemo } from "react";
 
 const TheoryCreate = () => {
   const back = useBack();
@@ -67,8 +72,50 @@ const TheoryCreate = () => {
   const { query: categoriesQuery } = useList<Category>({
     resource: "categories",
     pagination: { pageSize: 100 },
+    filters: [{ field: "resource", operator: "eq", value: "theory" }],
   });
-  const categories = categoriesQuery?.data?.data || [];
+  const categories = useMemo(() => categoriesQuery?.data?.data || [], [categoriesQuery]);
+
+  const { generate, result, isLoading } = useAi();
+
+  useEffect(() => {
+    if (!result) return;
+
+    const cleaned = result
+      .replace(/```json\n?/g, "")
+      .replace(/```\n?/g, "")
+      .trim();
+
+    try {
+      const parsed = JSON.parse(cleaned);
+
+      if (parsed.description) form.setValue("description", parsed.description);
+      if (parsed.useCases) form.setValue("useCases", parsed.useCases);
+      if (parsed.type) form.setValue("type", parsed.type);
+      if (parsed.domain) form.setValue("domain", parsed.domain);
+      if (parsed.complexity) form.setValue("complexity", parsed.complexity);
+      if (parsed.tags?.length) form.setValue("tags", parsed.tags);
+
+      const match = categories.find(
+        (c) => c.name.toLowerCase() === parsed.category?.toLowerCase()
+      );
+      if (match) {
+        form.setValue("categoryId", match.id);
+      }
+    } catch (e) {
+      console.error("Failed to parse AI result:", e);
+    }
+  }, [result, form, categories]);
+
+  const handleGenerate = async () => {
+    const name = form.getValues("name");
+    const code = form.getValues("code");
+
+    const prompt = buildTheoryPrompt(name, code, {
+      categories: categories.map((c) => c.name),
+    });
+    generate(prompt);
+  };
 
   return (
     <CreateView>
@@ -132,7 +179,7 @@ const TheoryCreate = () => {
                   )}
                 />
 
-                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
                   <FormField
                     control={control}
                     name="type"
@@ -150,6 +197,34 @@ const TheoryCreate = () => {
                           </FormControl>
                           <SelectContent>
                             {THEORY_TYPE_OPTIONS.map((opt) => (
+                              <SelectItem key={opt.value} value={opt.value}>
+                                {opt.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={control}
+                    name="domain"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Domain</FormLabel>
+                        <Select
+                          onValueChange={field.onChange}
+                          value={field.value}
+                        >
+                          <FormControl>
+                            <SelectTrigger className="w-full">
+                              <SelectValue placeholder="Select domain" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {DOMAIN_OPTIONS.map((opt) => (
                               <SelectItem key={opt.value} value={opt.value}>
                                 {opt.label}
                               </SelectItem>
@@ -302,6 +377,8 @@ const TheoryCreate = () => {
                     </FormItem>
                   )}
                 />
+
+                <AIButton onGenerate={handleGenerate} isLoading={isLoading} />
 
                 <Separator />
 

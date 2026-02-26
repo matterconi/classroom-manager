@@ -1,11 +1,13 @@
 import { CreateView } from "@/components/refine-ui/views/create-view";
 import { Breadcrumb } from "@/components/refine-ui/layout/breadcrumb";
 import { Button } from "@/components/ui/button";
+import AIButton from "@/components/ui/ai-input";
 import { useBack, useList } from "@refinedev/core";
 import { Separator } from "@/components/ui/separator";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "@refinedev/react-hook-form";
+import { useAi } from "@/hooks/useAI";
 import { collectionSchema } from "@/lib/schema";
 import * as z from "zod";
 import {
@@ -28,8 +30,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { TagInput } from "@/components/ui/tag-input";
 import { Loader2, Plus, Trash2 } from "lucide-react";
 import type { Category } from "@/types";
-import { COLLECTION_STACK_OPTIONS, STATUS_OPTIONS } from "@/constants";
+import { DOMAIN_OPTIONS, COLLECTION_STACK_OPTIONS, STATUS_OPTIONS } from "@/constants";
+import { buildCollectionPrompt } from "@/lib/prompts";
 import { useFieldArray } from "react-hook-form";
+import { useEffect, useMemo } from "react";
 
 const CollectionCreate = () => {
   const back = useBack();
@@ -71,8 +75,50 @@ const CollectionCreate = () => {
   const { query: categoriesQuery } = useList<Category>({
     resource: "categories",
     pagination: { pageSize: 100 },
+    filters: [{ field: "resource", operator: "eq", value: "collections" }],
   });
-  const categories = categoriesQuery?.data?.data || [];
+  const categories = useMemo(() => categoriesQuery?.data?.data || [], [categoriesQuery]);
+
+  const { generate, result, isLoading } = useAi();
+
+  useEffect(() => {
+    if (!result) return;
+
+    const cleaned = result
+      .replace(/```json\n?/g, "")
+      .replace(/```\n?/g, "")
+      .trim();
+
+    try {
+      const parsed = JSON.parse(cleaned);
+
+      if (parsed.description) form.setValue("description", parsed.description);
+      if (parsed.domain) form.setValue("domain", parsed.domain);
+      if (parsed.stack) form.setValue("stack", parsed.stack);
+      if (parsed.libraries?.length) form.setValue("libraries", parsed.libraries);
+      if (parsed.tags?.length) form.setValue("tags", parsed.tags);
+      if (parsed.entryFile) form.setValue("entryFile", parsed.entryFile);
+
+      const match = categories.find(
+        (c) => c.name.toLowerCase() === parsed.category?.toLowerCase()
+      );
+      if (match) {
+        form.setValue("categoryId", match.id);
+      }
+    } catch (e) {
+      console.error("Failed to parse AI result:", e);
+    }
+  }, [result, form, categories]);
+
+  const handleGenerate = async () => {
+    const name = form.getValues("name");
+    const files = form.getValues("files");
+
+    const prompt = buildCollectionPrompt(name, files, {
+      categories: categories.map((c) => c.name),
+    });
+    generate(prompt);
+  };
 
   return (
     <CreateView>
@@ -116,7 +162,35 @@ const CollectionCreate = () => {
                   )}
                 />
 
-                <div className="grid gap-4 sm:grid-cols-3">
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                  <FormField
+                    control={control}
+                    name="domain"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Domain</FormLabel>
+                        <Select
+                          onValueChange={field.onChange}
+                          value={field.value}
+                        >
+                          <FormControl>
+                            <SelectTrigger className="w-full">
+                              <SelectValue placeholder="Select domain" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {DOMAIN_OPTIONS.map((opt) => (
+                              <SelectItem key={opt.value} value={opt.value}>
+                                {opt.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
                   <FormField
                     control={control}
                     name="categoryId"
@@ -368,6 +442,8 @@ const CollectionCreate = () => {
                     )}
                   />
                 </div>
+
+                <AIButton onGenerate={handleGenerate} isLoading={isLoading} />
 
                 <Separator />
 
