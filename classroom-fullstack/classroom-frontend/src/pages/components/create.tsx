@@ -93,20 +93,32 @@ const ComponentCreate = () => {
       if (parsed.tags?.length) form.setValue("tags", parsed.tags);
       if (parsed.entryFile) form.setValue("entryFile", parsed.entryFile);
 
-      const match = categories.find(
-        (c) => c.name.toLowerCase() === parsed.category?.toLowerCase()
-      );
-      if (match) {
-        form.setValue("categoryId", match.id);
-      } else if (parsed.category) {
-        console.warn(`Category "${parsed.category}" not found in existing categories`);
+      if (parsed.category) {
+        const match = categories.find(
+          (c) => c.name.toLowerCase() === parsed.category.toLowerCase()
+        );
+        if (match) {
+          form.setValue("categoryId", match.id);
+        } else {
+          fetch(`${BACKEND_BASE_URL}/api/categories`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name: parsed.category, resource: "components" }),
+          })
+            .then((res) => res.json())
+            .then(({ data }) => {
+              if (data?.id) {
+                form.setValue("categoryId", data.id);
+                categoriesQuery.refetch();
+              }
+            })
+            .catch((err) => console.error("Failed to create category:", err));
+        }
       }
     } catch (e) {
       console.error("Failed to parse AI result:", e);
-      return;
     }
-
-  }, [result, form, categories])
+  }, [result, form, categories, categoriesQuery])
 
   const onSubmit = async (values: Record<string, unknown>) => {
     try {

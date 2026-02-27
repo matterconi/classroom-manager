@@ -36,6 +36,7 @@ import {
   SNIPPET_STACK_OPTIONS,
   LANGUAGE_OPTIONS,
   STATUS_OPTIONS,
+  BACKEND_BASE_URL,
 } from "@/constants";
 import { buildSnippetPrompt } from "@/lib/prompts";
 import { useEffect, useMemo } from "react";
@@ -99,16 +100,32 @@ const SnippetCreate = () => {
       if (parsed.libraries?.length) form.setValue("libraries", parsed.libraries);
       if (parsed.tags?.length) form.setValue("tags", parsed.tags);
 
-      const match = categories.find(
-        (c) => c.name.toLowerCase() === parsed.category?.toLowerCase()
-      );
-      if (match) {
-        form.setValue("categoryId", match.id);
+      if (parsed.category) {
+        const match = categories.find(
+          (c) => c.name.toLowerCase() === parsed.category.toLowerCase()
+        );
+        if (match) {
+          form.setValue("categoryId", match.id);
+        } else {
+          fetch(`${BACKEND_BASE_URL}/api/categories`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name: parsed.category, resource: "snippets" }),
+          })
+            .then((res) => res.json())
+            .then(({ data }) => {
+              if (data?.id) {
+                form.setValue("categoryId", data.id);
+                categoriesQuery.refetch();
+              }
+            })
+            .catch((err) => console.error("Failed to create category:", err));
+        }
       }
     } catch (e) {
       console.error("Failed to parse AI result:", e);
     }
-  }, [result, form, categories]);
+  }, [result, form, categories, categoriesQuery]);
 
   const handleGenerate = async () => {
     const name = form.getValues("name");

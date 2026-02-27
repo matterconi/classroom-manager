@@ -30,7 +30,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { TagInput } from "@/components/ui/tag-input";
 import { Loader2, Plus, Trash2 } from "lucide-react";
 import type { Category } from "@/types";
-import { DOMAIN_OPTIONS, COLLECTION_STACK_OPTIONS, STATUS_OPTIONS } from "@/constants";
+import { DOMAIN_OPTIONS, COLLECTION_STACK_OPTIONS, STATUS_OPTIONS, BACKEND_BASE_URL } from "@/constants";
 import { buildCollectionPrompt } from "@/lib/prompts";
 import { useFieldArray } from "react-hook-form";
 import { useEffect, useMemo } from "react";
@@ -99,16 +99,32 @@ const CollectionCreate = () => {
       if (parsed.tags?.length) form.setValue("tags", parsed.tags);
       if (parsed.entryFile) form.setValue("entryFile", parsed.entryFile);
 
-      const match = categories.find(
-        (c) => c.name.toLowerCase() === parsed.category?.toLowerCase()
-      );
-      if (match) {
-        form.setValue("categoryId", match.id);
+      if (parsed.category) {
+        const match = categories.find(
+          (c) => c.name.toLowerCase() === parsed.category.toLowerCase()
+        );
+        if (match) {
+          form.setValue("categoryId", match.id);
+        } else {
+          fetch(`${BACKEND_BASE_URL}/api/categories`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name: parsed.category, resource: "collections" }),
+          })
+            .then((res) => res.json())
+            .then(({ data }) => {
+              if (data?.id) {
+                form.setValue("categoryId", data.id);
+                categoriesQuery.refetch();
+              }
+            })
+            .catch((err) => console.error("Failed to create category:", err));
+        }
       }
     } catch (e) {
       console.error("Failed to parse AI result:", e);
     }
-  }, [result, form, categories]);
+  }, [result, form, categories, categoriesQuery]);
 
   const handleGenerate = async () => {
     const name = form.getValues("name");
