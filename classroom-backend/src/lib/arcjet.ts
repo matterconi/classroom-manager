@@ -12,18 +12,18 @@ const aj = arcjet({
     }),
     tokenBucket({
       mode: isDev ? "DRY_RUN" : "LIVE",
-      refillRate: 5,
+      refillRate: 20,
       interval: 10,
-      capacity: 10,
+      capacity: 50,
     }),
   ],
 });
 
 const rateLimitConfig = {
-  admin: { max: 20, message: "Admin request limit exceeded" },
-  teacher: { max: 10, message: "User request limit exceeded" },
-  student: { max: 10, message: "User request limit exceeded" },
-  guest: { max: 5, message: "Guest request limit exceeded" },
+  admin: { max: 120, message: "Admin request limit exceeded" },
+  teacher: { max: 60, message: "User request limit exceeded" },
+  student: { max: 60, message: "User request limit exceeded" },
+  guest: { max: 30, message: "Guest request limit exceeded" },
 } as const satisfies Record<RateLimitRole, { max: number; message: string }>;
 
 export const ajByRole = Object.fromEntries(
