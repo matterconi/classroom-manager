@@ -30,7 +30,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { TagInput } from "@/components/ui/tag-input";
 import { Loader2, Plus, Trash2 } from "lucide-react";
 import type { Category } from "@/types";
-import { DOMAIN_OPTIONS, COLLECTION_STACK_OPTIONS, STATUS_OPTIONS, BACKEND_BASE_URL } from "@/constants";
+import { DOMAIN_OPTIONS, COLLECTION_STACK_OPTIONS, BACKEND_BASE_URL } from "@/constants";
 import { buildCollectionPrompt } from "@/lib/prompts";
 import { useFieldArray } from "react-hook-form";
 import { useEffect, useMemo } from "react";
@@ -45,7 +45,6 @@ const CollectionCreate = () => {
       action: "create",
     },
     defaultValues: {
-      status: "draft",
       entryFile: "",
       files: [{ name: "", code: "" }],
     },
@@ -268,33 +267,6 @@ const CollectionCreate = () => {
                     )}
                   />
 
-                  <FormField
-                    control={control}
-                    name="status"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Status</FormLabel>
-                        <Select
-                          onValueChange={field.onChange}
-                          value={field.value}
-                        >
-                          <FormControl>
-                            <SelectTrigger className="w-full">
-                              <SelectValue placeholder="Select status" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            {STATUS_OPTIONS.map((opt) => (
-                              <SelectItem key={opt.value} value={opt.value}>
-                                {opt.label}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
                 </div>
 
                 <FormField

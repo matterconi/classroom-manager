@@ -28,7 +28,6 @@ export const componentSchema = z.object({
   tags: z.array(z.string()).optional(),
   variants: z.array(variantSchema).optional(),
   entryFile: z.string().optional(),
-  status: z.enum(["draft", "published", "archived"]).optional(),
   files: z.array(componentFileSchema).min(1, "At least one file is required"),
 });
 
@@ -47,7 +46,6 @@ export const collectionSchema = z.object({
   libraries: z.array(z.string()).optional(),
   tags: z.array(z.string()).optional(),
   entryFile: z.string().optional(),
-  status: z.enum(["draft", "published", "archived"]).optional(),
   files: z
     .array(collectionFileSchema)
     .min(1, "At least one file is required"),
@@ -65,7 +63,6 @@ export const snippetSchema = z.object({
   useCases: z.string().optional(),
   libraries: z.array(z.string()).optional(),
   tags: z.array(z.string()).optional(),
-  status: z.enum(["draft", "published", "archived"]).optional(),
 });
 
 export const theorySchema = z.object({
@@ -78,5 +75,4 @@ export const theorySchema = z.object({
   complexity: z.string().optional(),
   useCases: z.string().optional(),
   tags: z.array(z.string()).optional(),
-  status: z.enum(["draft", "published", "archived"]).optional(),
 });

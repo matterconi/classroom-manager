@@ -16,8 +16,6 @@ const LIMIT_MAX = 100;
 const SEARCH_MAX_LENGTH = 100;
 const SEARCH_PATTERN = /^[\p{L}\p{N}\s\-.,]+$/u;
 
-const STATUS_VALUES = ["draft", "published", "archived"] as const;
-
 const router = express.Router();
 
 function slugify(text: string): string {
@@ -28,7 +26,6 @@ router.get("/", async (req: express.Request, res: express.Response) => {
   try {
     const {
       search,
-      status,
       type,
       domain,
       stack,
@@ -64,16 +61,6 @@ router.get("/", async (req: express.Request, res: express.Response) => {
           ilike(snippets.name, `%${trimmedSearch}%`),
           ilike(snippets.description, `%${trimmedSearch}%`),
         ),
-      );
-    }
-
-    if (status) {
-      if (!STATUS_VALUES.includes(status as (typeof STATUS_VALUES)[number])) {
-        res.status(400).json({ error: "Invalid status" });
-        return;
-      }
-      filterConditions.push(
-        eq(snippets.status, status as (typeof STATUS_VALUES)[number]),
       );
     }
 
@@ -200,7 +187,6 @@ router.post("/", async (req: express.Request, res: express.Response) => {
       useCases,
       libraries,
       tags,
-      status,
     } = req.body;
 
     if (!name || typeof name !== "string") {
@@ -229,7 +215,6 @@ router.post("/", async (req: express.Request, res: express.Response) => {
         language: language || null,
         useCases: useCases || null,
         tags: tags || null,
-        status: status || "draft",
       })
       .returning();
 

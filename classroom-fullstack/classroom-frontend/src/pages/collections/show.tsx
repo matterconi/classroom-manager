@@ -62,7 +62,6 @@ const CollectionShow = () => {
             <CardTitle className="text-2xl">{record.name}</CardTitle>
             <div className="flex gap-2">
               {record.stack && <Badge variant="secondary">{record.stack}</Badge>}
-              <Badge>{record.status}</Badge>
             </div>
           </div>
           {record.description && (

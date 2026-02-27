@@ -21,14 +21,12 @@ import type { Theory, Category } from "@/types";
 import {
   THEORY_TYPE_OPTIONS,
   COMPLEXITY_OPTIONS,
-  STATUS_OPTIONS,
 } from "@/constants";
 
 const TheoryList = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedType, setSelectedType] = useState("all");
   const [selectedComplexity, setSelectedComplexity] = useState("all");
-  const [selectedStatus, setSelectedStatus] = useState("all");
   const [selectedCategory, setSelectedCategory] = useState("all");
 
   const { query: categoriesQuery } = useList<Category>({
@@ -52,9 +50,6 @@ const TheoryList = () => {
             value: selectedComplexity,
           },
         ]
-      : []),
-    ...(selectedStatus !== "all"
-      ? [{ field: "status", operator: "eq" as const, value: selectedStatus }]
       : []),
     ...(selectedCategory !== "all"
       ? [
@@ -123,13 +118,6 @@ const TheoryList = () => {
               <span>—</span>
             );
           },
-        },
-        {
-          id: "status",
-          accessorKey: "status",
-          size: 90,
-          header: () => <p className="column-title">Status</p>,
-          cell: ({ getValue }) => <Badge>{getValue<string>()}</Badge>,
         },
         {
           id: "actions",
@@ -223,20 +211,6 @@ const TheoryList = () => {
                 {categories.map((cat) => (
                   <SelectItem value={cat.id.toString()} key={cat.id}>
                     {cat.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            <Select value={selectedStatus} onValueChange={setSelectedStatus}>
-              <SelectTrigger className="w-[130px]">
-                <SelectValue placeholder="Status" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Status</SelectItem>
-                {STATUS_OPTIONS.map((opt) => (
-                  <SelectItem value={opt.value} key={opt.value}>
-                    {opt.label}
                   </SelectItem>
                 ))}
               </SelectContent>

@@ -32,7 +32,7 @@ import { TagInput } from "@/components/ui/tag-input";
 import { FileDropzone } from "@/components/ui/file-dropzone";
 import { Loader2, Plus, Trash2 } from "lucide-react";
 import type { Category } from "@/types";
-import { COMPONENT_TYPE_OPTIONS, DOMAIN_OPTIONS, STATUS_OPTIONS, BACKEND_BASE_URL } from "@/constants";
+import { COMPONENT_TYPE_OPTIONS, DOMAIN_OPTIONS, BACKEND_BASE_URL } from "@/constants";
 import { buildComponentPrompt } from "@/lib/prompts";
 import { useEffect, useMemo } from "react";
 
@@ -47,7 +47,6 @@ const ComponentCreate = () => {
       action: "create",
     },
     defaultValues: {
-      status: "draft",
       files: [{ name: "", code: "" }],
       entryFile: "",
     },
@@ -288,33 +287,6 @@ const ComponentCreate = () => {
                     )}
                   />
 
-                  <FormField
-                    control={control}
-                    name="status"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Status</FormLabel>
-                        <Select
-                          onValueChange={field.onChange}
-                          value={field.value}
-                        >
-                          <FormControl>
-                            <SelectTrigger className="w-full">
-                              <SelectValue placeholder="Select status" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            {STATUS_OPTIONS.map((opt) => (
-                              <SelectItem key={opt.value} value={opt.value}>
-                                {opt.label}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
                 </div>
 
                 <FormField

@@ -18,12 +18,11 @@ import { ColumnDef } from "@tanstack/react-table";
 import { useTable } from "@refinedev/react-table";
 import { useList } from "@refinedev/core";
 import type { Collection, Category } from "@/types";
-import { COLLECTION_STACK_OPTIONS, STATUS_OPTIONS } from "@/constants";
+import { COLLECTION_STACK_OPTIONS } from "@/constants";
 
 const CollectionsList = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedStack, setSelectedStack] = useState("all");
-  const [selectedStatus, setSelectedStatus] = useState("all");
   const [selectedCategory, setSelectedCategory] = useState("all");
 
   const { query: categoriesQuery } = useList<Category>({
@@ -38,9 +37,6 @@ const CollectionsList = () => {
       : []),
     ...(selectedStack !== "all"
       ? [{ field: "stack", operator: "eq" as const, value: selectedStack }]
-      : []),
-    ...(selectedStatus !== "all"
-      ? [{ field: "status", operator: "eq" as const, value: selectedStatus }]
       : []),
     ...(selectedCategory !== "all"
       ? [
@@ -128,13 +124,6 @@ const CollectionsList = () => {
           },
         },
         {
-          id: "status",
-          accessorKey: "status",
-          size: 90,
-          header: () => <p className="column-title">Status</p>,
-          cell: ({ getValue }) => <Badge>{getValue<string>()}</Badge>,
-        },
-        {
           id: "actions",
           header: () => <p className="column-title">Actions</p>,
           size: 100,
@@ -209,20 +198,6 @@ const CollectionsList = () => {
                 {categories.map((cat) => (
                   <SelectItem value={cat.id.toString()} key={cat.id}>
                     {cat.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            <Select value={selectedStatus} onValueChange={setSelectedStatus}>
-              <SelectTrigger className="w-[130px]">
-                <SelectValue placeholder="Status" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Status</SelectItem>
-                {STATUS_OPTIONS.map((opt) => (
-                  <SelectItem value={opt.value} key={opt.value}>
-                    {opt.label}
                   </SelectItem>
                 ))}
               </SelectContent>

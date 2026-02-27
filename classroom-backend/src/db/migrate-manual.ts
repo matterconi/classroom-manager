@@ -11,7 +11,7 @@ const sql = neon(process.env["DATABASE_URL"]);
 
 const migrationPath = resolve(
   import.meta.dirname,
-  "../../drizzle/0003_snippets_and_entry_file.sql",
+  "../../drizzle/0007_drop_status.sql",
 );
 const migration = readFileSync(migrationPath, "utf-8");
 

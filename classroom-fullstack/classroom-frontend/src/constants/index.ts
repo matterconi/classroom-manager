@@ -30,12 +30,6 @@ export const COLLECTION_STACK_OPTIONS = [
   { value: "fullstack", label: "Fullstack" },
 ] as const;
 
-export const STATUS_OPTIONS = [
-  { value: "draft", label: "Draft" },
-  { value: "published", label: "Published" },
-  { value: "archived", label: "Archived" },
-] as const;
-
 export const DOMAIN_OPTIONS = [
   { value: "hooks", label: "Hooks" },
   { value: "api", label: "API" },

@@ -91,7 +91,6 @@ const SnippetShow = () => {
                   {languageLabel}
                 </Badge>
               )}
-              <Badge>{record.status}</Badge>
             </div>
           </div>
           {record.description && (

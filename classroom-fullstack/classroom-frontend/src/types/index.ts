@@ -36,7 +36,6 @@ export type Component = {
   tags?: string[];
   variants?: ComponentVariant[];
   entryFile?: string;
-  status: "draft" | "published" | "archived";
   category?: Category;
   filesCount?: number;
   files?: ComponentFile[];
@@ -55,7 +54,6 @@ export type Collection = {
   libraries?: string[];
   tags?: string[];
   entryFile?: string;
-  status: "draft" | "published" | "archived";
   category?: Category;
   filesCount?: number;
   files?: CollectionFile[];
@@ -88,7 +86,6 @@ export type Snippet = {
   useCases?: string;
   libraries?: string[];
   tags?: string[];
-  status: "draft" | "published" | "archived";
   category?: Category;
   createdAt?: string;
   updatedAt?: string;
@@ -106,7 +103,6 @@ export type Theory = {
   complexity?: string;
   useCases?: string;
   tags?: string[];
-  status: "draft" | "published" | "archived";
   category?: Category;
   createdAt?: string;
   updatedAt?: string;

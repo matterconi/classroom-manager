@@ -41,7 +41,7 @@ const options: CreateDataProviderOptions = {
 
         if (resource === "components") {
           if (field === "name") params.search = value;
-          if (field === "status") params.status = value;
+
           if (field === "stack") params.stack = value;
           if (field === "categoryId") params.categoryId = value;
           if (field === "library") params.library = value;
@@ -50,7 +50,7 @@ const options: CreateDataProviderOptions = {
 
         if (resource === "collections") {
           if (field === "name") params.search = value;
-          if (field === "status") params.status = value;
+
           if (field === "stack") params.stack = value;
           if (field === "categoryId") params.categoryId = value;
           if (field === "library") params.library = value;
@@ -58,7 +58,7 @@ const options: CreateDataProviderOptions = {
 
         if (resource === "snippets") {
           if (field === "name") params.search = value;
-          if (field === "status") params.status = value;
+
           if (field === "categoryId") params.categoryId = value;
           if (field === "type") params.type = value;
           if (field === "complexity") params.complexity = value;

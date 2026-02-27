@@ -106,7 +106,6 @@ const ComponentShow = () => {
               {record.type && (
                 <Badge variant="secondary">{record.type}</Badge>
               )}
-              <Badge>{record.status}</Badge>
             </div>
           </div>
           {record.description && (

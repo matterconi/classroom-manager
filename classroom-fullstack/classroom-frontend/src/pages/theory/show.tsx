@@ -70,7 +70,6 @@ const TheoryShow = () => {
                   {record.complexity}
                 </Badge>
               )}
-              <Badge>{record.status}</Badge>
             </div>
           </div>
           {record.description && (

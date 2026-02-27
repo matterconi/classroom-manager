@@ -35,7 +35,6 @@ import {
   DOMAIN_OPTIONS,
   SNIPPET_STACK_OPTIONS,
   LANGUAGE_OPTIONS,
-  STATUS_OPTIONS,
   BACKEND_BASE_URL,
 } from "@/constants";
 import { buildSnippetPrompt } from "@/lib/prompts";
@@ -50,9 +49,7 @@ const SnippetCreate = () => {
       resource: "snippets",
       action: "create",
     },
-    defaultValues: {
-      status: "draft",
-    },
+    defaultValues: {},
   });
 
   const {
@@ -312,33 +309,6 @@ const SnippetCreate = () => {
                     )}
                   />
 
-                  <FormField
-                    control={control}
-                    name="status"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Status</FormLabel>
-                        <Select
-                          onValueChange={field.onChange}
-                          value={field.value}
-                        >
-                          <FormControl>
-                            <SelectTrigger className="w-full">
-                              <SelectValue placeholder="Select status" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            {STATUS_OPTIONS.map((opt) => (
-                              <SelectItem key={opt.value} value={opt.value}>
-                                {opt.label}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
                 </div>
 
                 <FormField

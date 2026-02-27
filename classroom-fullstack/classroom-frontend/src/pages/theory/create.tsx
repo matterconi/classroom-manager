@@ -34,7 +34,6 @@ import {
   THEORY_TYPE_OPTIONS,
   DOMAIN_OPTIONS,
   COMPLEXITY_OPTIONS,
-  STATUS_OPTIONS,
   BACKEND_BASE_URL,
 } from "@/constants";
 import { buildTheoryPrompt } from "@/lib/prompts";
@@ -49,9 +48,7 @@ const TheoryCreate = () => {
       resource: "theory",
       action: "create",
     },
-    defaultValues: {
-      status: "draft",
-    },
+    defaultValues: {},
   });
 
   const {
@@ -314,33 +311,6 @@ const TheoryCreate = () => {
                     )}
                   />
 
-                  <FormField
-                    control={control}
-                    name="status"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Status</FormLabel>
-                        <Select
-                          onValueChange={field.onChange}
-                          value={field.value}
-                        >
-                          <FormControl>
-                            <SelectTrigger className="w-full">
-                              <SelectValue placeholder="Select status" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            {STATUS_OPTIONS.map((opt) => (
-                              <SelectItem key={opt.value} value={opt.value}>
-                                {opt.label}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
                 </div>
 
                 <FormField

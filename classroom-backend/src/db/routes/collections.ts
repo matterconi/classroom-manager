@@ -21,7 +21,6 @@ const LIMIT_MAX = 100;
 const SEARCH_MAX_LENGTH = 100;
 const SEARCH_PATTERN = /^[\p{L}\p{N}\s\-.,]+$/u;
 
-const STATUS_VALUES = ["draft", "published", "archived"] as const;
 const STACK_VALUES = ["frontend", "backend", "fullstack"] as const;
 
 const router = express.Router();
@@ -34,7 +33,6 @@ router.get("/", async (req: express.Request, res: express.Response) => {
   try {
     const {
       search,
-      status,
       domain,
       stack,
       categoryId,
@@ -69,16 +67,6 @@ router.get("/", async (req: express.Request, res: express.Response) => {
           ilike(collections.name, `%${trimmedSearch}%`),
           ilike(collections.description, `%${trimmedSearch}%`),
         ),
-      );
-    }
-
-    if (status) {
-      if (!STATUS_VALUES.includes(status as (typeof STATUS_VALUES)[number])) {
-        res.status(400).json({ error: "Invalid status" });
-        return;
-      }
-      filterConditions.push(
-        eq(collections.status, status as (typeof STATUS_VALUES)[number]),
       );
     }
 
@@ -207,7 +195,6 @@ router.post("/", async (req: express.Request, res: express.Response) => {
       libraries,
       tags,
       entryFile,
-      status,
       files,
     } = req.body;
 
@@ -246,7 +233,6 @@ router.post("/", async (req: express.Request, res: express.Response) => {
         libraries: libraries || null,
         tags: tags || null,
         entryFile: entryFile || null,
-        status: status || "draft",
       })
       .returning({ id: collections.id });
 

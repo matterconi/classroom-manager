@@ -16,7 +16,6 @@ const LIMIT_MAX = 100;
 const SEARCH_MAX_LENGTH = 100;
 const SEARCH_PATTERN = /^[\p{L}\p{N}\s\-.,]+$/u;
 
-const STATUS_VALUES = ["draft", "published", "archived"] as const;
 const TYPE_VALUES = ["algorithm", "data-structure", "design-pattern"] as const;
 
 const router = express.Router();
@@ -29,7 +28,6 @@ router.get("/", async (req: express.Request, res: express.Response) => {
   try {
     const {
       search,
-      status,
       type,
       domain,
       complexity,
@@ -64,16 +62,6 @@ router.get("/", async (req: express.Request, res: express.Response) => {
           ilike(theory.name, `%${trimmedSearch}%`),
           ilike(theory.description, `%${trimmedSearch}%`),
         ),
-      );
-    }
-
-    if (status) {
-      if (!STATUS_VALUES.includes(status as (typeof STATUS_VALUES)[number])) {
-        res.status(400).json({ error: "Invalid status" });
-        return;
-      }
-      filterConditions.push(
-        eq(theory.status, status as (typeof STATUS_VALUES)[number]),
       );
     }
 
@@ -192,7 +180,6 @@ router.post("/", async (req: express.Request, res: express.Response) => {
       complexity,
       useCases,
       tags,
-      status,
     } = req.body;
 
     if (!name || typeof name !== "string") {
@@ -220,7 +207,6 @@ router.post("/", async (req: express.Request, res: express.Response) => {
         complexity: complexity || null,
         useCases: useCases || null,
         tags: tags || null,
-        status: status || "draft",
       })
       .returning();
 

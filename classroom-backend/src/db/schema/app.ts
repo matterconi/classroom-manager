@@ -23,12 +23,6 @@ const timestamps = {
 
 // ── Enums ──────────────────────────────────────────────────────────────────────
 
-export const statusEnum = pgEnum("component_status", [
-  "draft",
-  "published",
-  "archived",
-]);
-
 export const stackEnum = pgEnum("collection_stack", [
   "frontend",
   "backend",
@@ -73,7 +67,6 @@ export const components = pgTable(
     variants:
       jsonb("variants").$type<{ prop: string; options: string[] }[]>(),
     entryFile: varchar("entry_file", { length: 255 }),
-    status: statusEnum("status").default("draft").notNull(),
     embedding: vector("embedding", { dimensions: 1536 }),
     ...timestamps,
   },
@@ -116,7 +109,6 @@ export const collections = pgTable(
     libraries: jsonb("libraries").$type<string[]>(),
     tags: jsonb("tags").$type<string[]>(),
     entryFile: varchar("entry_file", { length: 255 }),
-    status: statusEnum("status").default("draft").notNull(),
     embedding: vector("embedding", { dimensions: 1536 }),
     ...timestamps,
   },
@@ -163,7 +155,6 @@ export const snippets = pgTable(
     useCases: text("use_cases"),
     libraries: jsonb("libraries").$type<string[]>(),
     tags: jsonb("tags").$type<string[]>(),
-    status: statusEnum("status").default("draft").notNull(),
     embedding: vector("embedding", { dimensions: 1536 }),
     ...timestamps,
   },
@@ -188,7 +179,6 @@ export const theory = pgTable(
     complexity: varchar("complexity", { length: 50 }),
     useCases: text("use_cases"),
     tags: jsonb("tags").$type<string[]>(),
-    status: statusEnum("status").default("draft").notNull(),
     embedding: vector("embedding", { dimensions: 1536 }),
     ...timestamps,
   },
