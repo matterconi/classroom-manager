@@ -15,6 +15,13 @@
       "when": 1771511373387,
       "tag": "0005_full_text_search",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1771511373388,
+      "tag": "0006_add_missing_columns",
+      "breakpoints": true
     }
   ]
 }
