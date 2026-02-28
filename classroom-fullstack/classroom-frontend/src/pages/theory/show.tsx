@@ -105,9 +105,15 @@ const TheoryShow = () => {
             <CardTitle className="text-lg">Use Cases</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-muted-foreground whitespace-pre-wrap">
-              {record.useCases}
-            </p>
+            <ul className="space-y-2 text-muted-foreground">
+              {record.useCases.map((uc, i) => (
+                <li key={i}>
+                  <span className="font-medium text-foreground">{uc.title}</span>
+                  {" — "}
+                  {uc.use}
+                </li>
+              ))}
+            </ul>
           </CardContent>
         </Card>
       )}
@@ -137,7 +143,7 @@ const TheoryShow = () => {
               fontSize: "0.875rem",
             }}
           >
-            {record.code}
+            {[record.code ?? ""]}
           </SyntaxHighlighter>
         </CardContent>
       </Card>
