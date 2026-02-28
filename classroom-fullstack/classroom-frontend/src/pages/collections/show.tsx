@@ -234,7 +234,7 @@ function FileCard({ file }: { file: CollectionFile }) {
                 fontSize: "0.875rem",
               }}
             >
-              {file.code}
+              {[file.code]}
             </SyntaxHighlighter>
           </CardContent>
         </CollapsibleContent>

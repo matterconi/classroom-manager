@@ -155,9 +155,15 @@ const ComponentShow = () => {
             <CardTitle className="text-lg">Use Cases</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-muted-foreground whitespace-pre-wrap">
-              {record.useCases}
-            </p>
+            <ul className="space-y-2 text-muted-foreground">
+              {record.useCases.map((uc, i) => (
+                <li key={i}>
+                  <span className="font-medium text-foreground">{uc.title}</span>
+                  {" — "}
+                  {uc.use}
+                </li>
+              ))}
+            </ul>
           </CardContent>
         </Card>
       )}
@@ -279,7 +285,7 @@ function FileCard({ file }: { file: ComponentFile }) {
                 fontSize: "0.875rem",
               }}
             >
-              {file.code}
+              {[file.code]}
             </SyntaxHighlighter>
           </CardContent>
         </CollapsibleContent>
