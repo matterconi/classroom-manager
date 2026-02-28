@@ -15,6 +15,7 @@ import { generateEmbedding } from "../../lib/embeddings.js";
 import { rerankCandidates, type ScoringFields } from "../../lib/scoring.js";
 import type { JudgeCandidateInput } from "../../lib/prompts.js";
 import type { ItemKind } from "../schema/app.js";
+import { runHierarchyPipeline } from "../../lib/hierarchy-pipeline.js";
 
 const LIMIT_MAX = 100;
 const SEARCH_MAX_LENGTH = 100;
@@ -609,6 +610,62 @@ router.post("/:id/link", async (req: express.Request, res: express.Response) => 
       res.status(409).json({ error: "This item already has a parent" });
       return;
     }
+    console.error(e);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ── POST /:id/decompose — Run hierarchy pipeline ────────────────────────────
+
+router.post("/:id/decompose", async (req: express.Request, res: express.Response) => {
+  try {
+    const itemId = parseInt(req.params.id as string, 10);
+    if (isNaN(itemId) || itemId < 1) {
+      res.status(400).json({ error: "Invalid id" });
+      return;
+    }
+
+    const [item] = await db
+      .select()
+      .from(items)
+      .where(eq(items.id, itemId));
+
+    if (!item) {
+      res.status(404).json({ error: "Item not found" });
+      return;
+    }
+
+    // Build source files
+    let sourceFiles: { name: string; code: string; language?: string | undefined }[] = [];
+
+    if (item.kind === "component" || item.kind === "collection") {
+      const files = await db
+        .select()
+        .from(itemFiles)
+        .where(eq(itemFiles.itemId, itemId))
+        .orderBy(asc(itemFiles.order));
+      sourceFiles = files.map((f) => ({
+        name: f.name,
+        code: f.code,
+        language: f.language || undefined,
+      }));
+    } else if (item.code) {
+      sourceFiles = [{
+        name: `${item.name}.tsx`,
+        code: item.code,
+        language: item.language || "typescript",
+      }];
+    }
+
+    if (sourceFiles.length === 0) {
+      res.status(400).json({ error: "Item has no source files for decomposition" });
+      return;
+    }
+
+    const result = await runHierarchyPipeline(itemId, sourceFiles);
+
+    res.status(201).json({ data: result });
+  } catch (e) {
     console.error(e);
     res.status(500).json({ error: "Internal server error" });
   }

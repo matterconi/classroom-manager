@@ -226,6 +226,7 @@ For each piece you identify:
 - description: 1-2 sentences about what this piece does
 - files: which source files belong to this piece (by filename)
 - is_demoable: can this be rendered as a standalone preview? (true for UI elements, false for pure logic/backend)
+- parent: the NAME of the piece this one belongs to. Organism has no parent. Sub-organisms → organism name. Molecules → organism or sub-organism name. Atoms → molecule or sub-organism name.
 
 RULES:
 - Every file must belong to at least one piece
@@ -234,6 +235,7 @@ RULES:
 - Pure utility/helper files: NOT demoable but still classified as atoms
 - Backend/API-only files: NOT demoable but still classified
 - A molecule can reference atoms that already exist in the library — still list them
+- Every piece (except organism) MUST have a parent field pointing to its direct container
 
 RESPOND with ONLY this JSON:
 {
@@ -248,7 +250,8 @@ RESPOND with ONLY this JSON:
       "name": "string",
       "description": "string",
       "is_demoable": boolean,
-      "files": ["filename.tsx"]
+      "files": ["filename.tsx"],
+      "parent": "organism name"
     }
   ],
   "molecules": [
@@ -256,7 +259,8 @@ RESPOND with ONLY this JSON:
       "name": "string",
       "description": "string",
       "is_demoable": boolean,
-      "files": ["filename.tsx"]
+      "files": ["filename.tsx"],
+      "parent": "organism or sub-organism name"
     }
   ],
   "atoms": [
@@ -264,7 +268,8 @@ RESPOND with ONLY this JSON:
       "name": "string",
       "description": "string",
       "is_demoable": boolean,
-      "files": ["filename.tsx"]
+      "files": ["filename.tsx"],
+      "parent": "molecule or sub-organism name"
     }
   ]
 }`.trim();

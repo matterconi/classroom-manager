@@ -41,6 +41,7 @@ type DecomposePiece = {
 	description: string;
 	is_demoable: boolean;
 	files: string[];
+	parent?: string | undefined;
 };
 
 type DecomposeResult = {
