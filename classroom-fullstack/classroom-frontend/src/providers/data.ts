@@ -22,9 +22,22 @@ const buildHttpError = async (response: Response): Promise<HttpError> => {
   };
 };
 
+// Map Refine resource names to item kinds
+const RESOURCE_KIND_MAP: Record<string, string> = {
+  snippets: "snippet",
+  theory: "snippet",
+  components: "component",
+  collections: "collection",
+};
+
+function getEndpoint(resource: string): string {
+  if (resource in RESOURCE_KIND_MAP) return "api/items";
+  return `api/${resource}`;
+}
+
 const options: CreateDataProviderOptions = {
   getList: {
-    getEndpoint: ({ resource }) => `api/${resource}`,
+    getEndpoint: ({ resource }) => getEndpoint(resource),
 
     buildQueryParams: async ({ resource, pagination, filters }) => {
       const page = pagination?.currentPage ?? 1;
@@ -35,39 +48,23 @@ const options: CreateDataProviderOptions = {
         limit: pageSize,
       };
 
+      // Add kind for item resources
+      const kind = RESOURCE_KIND_MAP[resource];
+      if (kind) params.kind = kind;
+
       filters?.forEach((filter) => {
         const field = "field" in filter ? filter.field : "";
         const value = String(filter.value);
 
-        if (resource === "components") {
-          if (field === "name") params.search = value;
-
-          if (field === "stack") params.stack = value;
-          if (field === "categoryId") params.categoryId = value;
-          if (field === "library") params.library = value;
-          if (field === "language") params.language = value;
-        }
-
-        if (resource === "collections") {
-          if (field === "name") params.search = value;
-
-          if (field === "stack") params.stack = value;
-          if (field === "categoryId") params.categoryId = value;
-          if (field === "library") params.library = value;
-        }
-
-        if (resource === "snippets") {
-          if (field === "name") params.search = value;
-
-          if (field === "categoryId") params.categoryId = value;
-          if (field === "type") params.type = value;
-          if (field === "complexity") params.complexity = value;
-        }
-
-        if (resource === "categories") {
-          if (field === "name") params.search = value;
-        }
+        if (field === "name") params.search = value;
+        if (field === "categoryId") params.categoryId = value;
+        if (field === "type") params.type = value;
+        if (field === "domain") params.domain = value;
+        if (field === "stack") params.stack = value;
+        if (field === "language") params.language = value;
+        if (field === "library") params.library = value;
       });
+
       return params;
     },
 
@@ -87,7 +84,10 @@ const options: CreateDataProviderOptions = {
   },
 
   getOne: {
-    getEndpoint: ({ resource, id }) => `api/${resource}/${id}`,
+    getEndpoint: ({ resource, id }) => {
+      if (resource in RESOURCE_KIND_MAP) return `api/items/${id}`;
+      return `api/${resource}/${id}`;
+    },
 
     mapResponse: async (response) => {
       if (!response.ok) throw await buildHttpError(response);
@@ -97,9 +97,16 @@ const options: CreateDataProviderOptions = {
   },
 
   create: {
-    getEndpoint: ({ resource }) => `api/${resource}`,
+    getEndpoint: ({ resource }) => {
+      if (resource in RESOURCE_KIND_MAP) return "api/items";
+      return `api/${resource}`;
+    },
 
-    buildBodyParams: async ({ variables }) => variables,
+    buildBodyParams: async ({ variables, resource }) => {
+      const kind = RESOURCE_KIND_MAP[resource];
+      if (kind) return { ...variables, kind };
+      return variables;
+    },
 
     mapResponse: async (response) => {
       const json: CreateResponse = await response.json();

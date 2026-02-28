@@ -29,6 +29,34 @@
       "when": 1771511373389,
       "tag": "0007_drop_status",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1771511373390,
+      "tag": "0008_parent_child_and_usecases",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1771511373391,
+      "tag": "0009_hnsw_embedding_indexes",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1771511373392,
+      "tag": "0010_unified_items",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1771511373393,
+      "tag": "0011_demos",
+      "breakpoints": true
     }
   ]
 }

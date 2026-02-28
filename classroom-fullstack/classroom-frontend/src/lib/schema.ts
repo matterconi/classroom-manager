@@ -12,6 +12,11 @@ const componentFileSchema = z.object({
   code: z.string().min(1, "Code is required"),
 });
 
+export const useCaseSchema = z.object({
+  title: z.string().min(1, "Title is required"),
+  use: z.string().min(1, "Use description is required"),
+});
+
 const variantSchema = z.object({
   prop: z.string().min(1, "Prop name is required"),
   options: z.array(z.string().min(1)).min(1, "At least one option is required"),
@@ -60,7 +65,7 @@ export const snippetSchema = z.object({
   domain: z.string().optional(),
   stack: z.string().optional(),
   language: z.string().optional(),
-  useCases: z.string().optional(),
+  useCases: z.array(useCaseSchema).optional(),
   libraries: z.array(z.string()).optional(),
   tags: z.array(z.string()).optional(),
 });
@@ -72,7 +77,6 @@ export const theorySchema = z.object({
   categoryId: z.coerce.number().optional(),
   type: z.enum(["algorithm", "data-structure", "design-pattern"]).optional(),
   domain: z.string().optional(),
-  complexity: z.string().optional(),
-  useCases: z.string().optional(),
+  useCases: z.array(useCaseSchema).optional(),
   tags: z.array(z.string()).optional(),
 });

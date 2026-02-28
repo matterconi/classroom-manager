@@ -33,7 +33,6 @@ import type { Category } from "@/types";
 import {
   THEORY_TYPE_OPTIONS,
   DOMAIN_OPTIONS,
-  COMPLEXITY_OPTIONS,
   BACKEND_BASE_URL,
 } from "@/constants";
 import { buildTheoryPrompt } from "@/lib/prompts";
@@ -91,7 +90,6 @@ const TheoryCreate = () => {
       if (parsed.useCases) form.setValue("useCases", parsed.useCases);
       if (parsed.type) form.setValue("type", parsed.type);
       if (parsed.domain) form.setValue("domain", parsed.domain);
-      if (parsed.complexity) form.setValue("complexity", parsed.complexity);
       if (parsed.tags?.length) form.setValue("tags", parsed.tags);
 
       if (parsed.category) {
@@ -239,34 +237,6 @@ const TheoryCreate = () => {
                           </FormControl>
                           <SelectContent>
                             {DOMAIN_OPTIONS.map((opt) => (
-                              <SelectItem key={opt.value} value={opt.value}>
-                                {opt.label}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={control}
-                    name="complexity"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Complexity</FormLabel>
-                        <Select
-                          onValueChange={field.onChange}
-                          value={field.value}
-                        >
-                          <FormControl>
-                            <SelectTrigger className="w-full">
-                              <SelectValue placeholder="Select complexity" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            {COMPLEXITY_OPTIONS.map((opt) => (
                               <SelectItem key={opt.value} value={opt.value}>
                                 {opt.label}
                               </SelectItem>

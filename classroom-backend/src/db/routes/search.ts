@@ -1,12 +1,7 @@
 import express from "express";
-import { sql } from "drizzle-orm";
+import { sql, and } from "drizzle-orm";
 import { db } from "../index.js";
-import {
-  components,
-  collections,
-  snippets,
-  theory,
-} from "../schema/index.js";
+import { items } from "../schema/index.js";
 import { generateEmbedding } from "../../lib/embeddings.js";
 
 const SEARCH_MAX_LENGTH = 200;
@@ -32,85 +27,40 @@ router.get("/", async (req: express.Request, res: express.Response) => {
     const resultLimit = Math.min(20, Math.max(1, parseInt(limit as string, 10)));
 
     const queryEmbedding = await generateEmbedding(trimmedQuery);
-    const vectorStr = `[${queryEmbedding?.join(",")}]`;
+    if (!queryEmbedding) {
+      res.status(200).json({ data: [] });
+      return;
+    }
 
-    const [componentResults, collectionResults, snippetResults, theoryResults] =
-      await Promise.all([
-        db
-          .select({
-            id: components.id,
-            name: components.name,
-            description: components.description,
-            type: components.type,
-            domain: components.domain,
-            tags: components.tags,
-            libraries: components.libraries,
-            similarity: sql<number>`1 - (${components.embedding} <=> ${vectorStr}::vector)`,
-          })
-          .from(components)
-          .where(sql`${components.embedding} IS NOT NULL`)
-          .orderBy(sql`${components.embedding} <=> ${vectorStr}::vector`)
-          .limit(resultLimit),
+    const vectorStr = `[${queryEmbedding.join(",")}]`;
 
-        db
-          .select({
-            id: collections.id,
-            name: collections.name,
-            description: collections.description,
-            domain: collections.domain,
-            stack: collections.stack,
-            tags: collections.tags,
-            libraries: collections.libraries,
-            similarity: sql<number>`1 - (${collections.embedding} <=> ${vectorStr}::vector)`,
-          })
-          .from(collections)
-          .where(sql`${collections.embedding} IS NOT NULL`)
-          .orderBy(sql`${collections.embedding} <=> ${vectorStr}::vector`)
-          .limit(resultLimit),
-
-        db
-          .select({
-            id: snippets.id,
-            name: snippets.name,
-            description: snippets.description,
-            domain: snippets.domain,
-            stack: snippets.stack,
-            language: snippets.language,
-            tags: snippets.tags,
-            libraries: snippets.libraries,
-            similarity: sql<number>`1 - (${snippets.embedding} <=> ${vectorStr}::vector)`,
-          })
-          .from(snippets)
-          .where(sql`${snippets.embedding} IS NOT NULL`)
-          .orderBy(sql`${snippets.embedding} <=> ${vectorStr}::vector`)
-          .limit(resultLimit),
-
-        db
-          .select({
-            id: theory.id,
-            name: theory.name,
-            description: theory.description,
-            type: theory.type,
-            domain: theory.domain,
-            complexity: theory.complexity,
-            tags: theory.tags,
-            similarity: sql<number>`1 - (${theory.embedding} <=> ${vectorStr}::vector)`,
-          })
-          .from(theory)
-          .where(sql`${theory.embedding} IS NOT NULL`)
-          .orderBy(sql`${theory.embedding} <=> ${vectorStr}::vector`)
-          .limit(resultLimit),
-      ]);
-
-    // 3) Merge, tag with resource type, sort by similarity, cut to limit
-    const results = [
-      ...componentResults.map((r) => ({ ...r, resource: "component" as const })),
-      ...collectionResults.map((r) => ({ ...r, resource: "collection" as const })),
-      ...snippetResults.map((r) => ({ ...r, resource: "snippet" as const })),
-      ...theoryResults.map((r) => ({ ...r, resource: "theory" as const })),
-    ]
-      .sort((a, b) => b.similarity - a.similarity)
-      .slice(0, resultLimit);
+    // Single query on unified items table
+    const results = await db
+      .select({
+        id: items.id,
+        kind: items.kind,
+        name: items.name,
+        description: items.description,
+        type: items.type,
+        domain: items.domain,
+        stack: items.stack,
+        language: items.language,
+        tags: items.tags,
+        libraries: items.libraries,
+        similarity: sql<number>`1 - (${items.embedding} <=> ${vectorStr}::vector)`,
+      })
+      .from(items)
+      .where(
+        and(
+          sql`${items.embedding} IS NOT NULL`,
+          // For snippets, exclude children
+          sql`NOT (${items.kind} = 'snippet' AND EXISTS (
+            SELECT 1 FROM edges WHERE edges.target_id = ${items.id} AND edges.type = 'parent'
+          ))`,
+        ),
+      )
+      .orderBy(sql`${items.embedding} <=> ${vectorStr}::vector`)
+      .limit(resultLimit);
 
     res.status(200).json({ data: results });
   } catch (e) {

@@ -8,62 +8,67 @@ export type Category = {
   createdAt?: string;
 };
 
+export type UseCase = {
+  title: string;
+  use: string;
+};
+
+// ── Edge-based relationships ─────────────────────────────────────────────────
+
+export type EdgeType = "parent" | "expansion" | "belongs_to";
+
+export type Edge = {
+  id: number;
+  sourceId: number;
+  targetId: number;
+  resource: "item";
+  type: EdgeType;
+  metadata?: Record<string, unknown>;
+  createdAt?: string;
+};
+
+export type ExpansionMetadata = {
+  title: string;
+  description: string;
+  code: string;
+  useCases?: UseCase[];
+  sourceName: string;
+  sourceCode: string;
+  createdAt: string;
+};
+
+export type SimilarItem = {
+  id: number;
+  name: string;
+  description?: string;
+  code: string;
+  similarity: number;
+  hasChildren: boolean;
+};
+
+export type JudgeMatch = {
+  candidateId: number;
+  verdict: "variant" | "parent_of" | "expansion";
+  confidence: number;
+  reasoning: string;
+};
+
+export type JudgeVerdict = {
+  matches: JudgeMatch[];
+};
+
 export type ComponentVariant = {
   prop: string;
   options: string[];
 };
 
-export type ComponentFile = {
-  id: number;
-  componentId: number;
-  name: string;
-  code: string;
-  order: number;
-  createdAt?: string;
-  updatedAt?: string;
-};
+// ── Unified Item ─────────────────────────────────────────────────────────────
 
-export type Component = {
-  id: number;
-  categoryId?: number;
-  name: string;
-  slug: string;
-  type?: string;
-  domain?: string;
-  description?: string;
-  useCases?: string;
-  libraries?: string[];
-  tags?: string[];
-  variants?: ComponentVariant[];
-  entryFile?: string;
-  category?: Category;
-  filesCount?: number;
-  files?: ComponentFile[];
-  createdAt?: string;
-  updatedAt?: string;
-};
+export type ItemKind = "snippet" | "component" | "collection";
 
-export type Collection = {
+export type ItemFile = {
   id: number;
-  categoryId?: number;
-  name: string;
-  slug: string;
-  description?: string;
-  domain?: string;
-  stack?: "frontend" | "backend" | "fullstack";
-  libraries?: string[];
-  tags?: string[];
-  entryFile?: string;
-  category?: Category;
-  filesCount?: number;
-  files?: CollectionFile[];
-  createdAt?: string;
-  updatedAt?: string;
-};
-
-export type CollectionFile = {
-  id: number;
-  collectionId: number;
+  itemId: number;
   name: string;
   code: string;
   language?: string;
@@ -72,41 +77,42 @@ export type CollectionFile = {
   updatedAt?: string;
 };
 
-export type Snippet = {
+export type Item = {
   id: number;
+  kind: ItemKind;
   categoryId?: number;
   name: string;
   slug: string;
   description?: string;
-  code: string;
+  code?: string;
   type?: string;
   domain?: string;
   stack?: string;
   language?: string;
-  useCases?: string;
+  useCases?: UseCase[];
   libraries?: string[];
   tags?: string[];
+  variants?: ComponentVariant[];
+  entryFile?: string;
+  isAbstract?: boolean;
   category?: Category;
+  children?: Item[];
+  expansions?: Edge[];
+  files?: ItemFile[];
+  filesCount?: number;
   createdAt?: string;
   updatedAt?: string;
 };
 
-export type Theory = {
-  id: number;
-  categoryId?: number;
-  name: string;
-  slug: string;
-  description?: string;
-  code: string;
-  type?: "algorithm" | "data-structure" | "design-pattern";
-  domain?: string;
-  complexity?: string;
-  useCases?: string;
-  tags?: string[];
-  category?: Category;
-  createdAt?: string;
-  updatedAt?: string;
-};
+// Backward-compatible aliases
+export type Snippet = Item;
+export type Theory = Item;
+export type Component = Item;
+export type Collection = Item;
+export type ComponentFile = ItemFile;
+export type CollectionFile = ItemFile;
+
+// ── API Response types ───────────────────────────────────────────────────────
 
 export type ListResponse<T = unknown> = {
   data?: T[];
@@ -120,6 +126,7 @@ export type ListResponse<T = unknown> = {
 
 export type CreateResponse<T = unknown> = {
   data?: T;
+  similarItems?: SimilarItem[];
 };
 
 export type GetOneResponse<T = unknown> = {

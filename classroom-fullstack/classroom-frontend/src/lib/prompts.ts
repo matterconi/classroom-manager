@@ -53,8 +53,8 @@ EXISTING TAGS: ${existingTags.join(", ")}
 const JSON_RULES = `
 RULES:
 - Respond with ONLY valid JSON. No markdown, no backticks, no explanation.
-- "description": 1-2 concise sentences in English.
-- "useCases": 2-4 practical use cases, separated by newlines.
+- "description": 2-3 concise sentences in English.
+- "useCases": array of 2-4 objects, each with "title" (short label) and "use" (1-2 sentence explanation). Example: [{"title": "Form validation", "use": "Validate user input before submission to prevent malformed data"}].
 - "libraries": array of npm package names actually used in the code (from imports). Do NOT include native/built-in modules.
 - "tags": 1-3 lowercase descriptive keywords about the component's behavior, style, or technique.
 `.trim();
@@ -116,7 +116,7 @@ ${code}
 Return JSON with exactly these fields:
 {
   "description": "string",
-  "useCases": "string",
+  "useCases": [{"title": "string", "use": "string"}],
   "type": "string",
   "domain": "string",
   "stack": "string",
@@ -132,6 +132,7 @@ ${JSON_RULES}
 - "stack": "frontend" or "backend".
 - "language": detect from the code. Common values: typescript, javascript, python, sql, css, html, shell.
 - "category": WHICH broad area this belongs to. This is NOT the domain.
+- CODE ABSTRACTION: In the code analysis, refer to generic names and demo data. Use "items", "data", "users" instead of domain-specific names.
 ${buildCategoryBlock(meta.categories)}
 ${buildTagsBlock(meta.tags || [])}`;
 }
@@ -153,7 +154,7 @@ ${code}
 Return JSON with exactly these fields:
 {
   "description": "string",
-  "useCases": "string",
+  "useCases": [{"title": "string", "use": "string"}],
   "type": "string",
   "domain": "string",
   "complexity": "string",
@@ -168,6 +169,7 @@ ${JSON_RULES}
 - "domain": the specific CS sub-area (e.g. "sorting", "graph-traversal", "creational-patterns"). ${buildExistingValuesBlock("DOMAINS", "domain", meta.domains || [], EXAMPLE_DOMAINS)}
 - "complexity": prefer one of these if it fits: ${EXAMPLE_COMPLEXITIES.join(", ")}. If not applicable, use "O(n)".
 - "category": WHICH broad CS area this belongs to. This is NOT the type.
+- CODE ABSTRACTION: In the code analysis, refer to generic names and demo data. Use "items", "data", "users" instead of domain-specific names.
 ${buildCategoryBlock(meta.categories)}
 ${buildTagsBlock(meta.tags || [])}`;
 }

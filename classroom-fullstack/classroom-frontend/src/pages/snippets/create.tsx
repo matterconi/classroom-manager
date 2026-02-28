@@ -2,7 +2,7 @@ import { CreateView } from "@/components/refine-ui/views/create-view";
 import { Breadcrumb } from "@/components/refine-ui/layout/breadcrumb";
 import { Button } from "@/components/ui/button";
 import AIButton from "@/components/ui/ai-input";
-import { useBack, useList } from "@refinedev/core";
+import { useBack, useList, useNavigate, useInvalidate } from "@refinedev/core";
 import { Separator } from "@/components/ui/separator";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -38,9 +38,17 @@ import {
   BACKEND_BASE_URL,
 } from "@/constants";
 import { buildSnippetPrompt } from "@/lib/prompts";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
+import type { SimilarItem } from "@/types";
+import { SimilarityDialog } from "@/components/ui/similarity-dialog";
+
 
 const SnippetCreate = () => {
+  const [similarItems, setSimilarItems] = useState<SimilarItem[]>([]);
+  const [createdItemId, setCreatedItemId] = useState<number | null>(null);
+  const [showSimilarDialog, setShowSimilarDialog] = useState(false);
+  const navigate = useNavigate(); // o useNavigation() in base alla versione Refine
+  const invalidate = useInvalidate();
   const back = useBack();
 
   const form = useForm<z.infer<typeof snippetSchema>>({
@@ -62,7 +70,21 @@ const SnippetCreate = () => {
   const onSubmit = async (values: Record<string, unknown>) => {
     try {
       const data = values as z.infer<typeof snippetSchema>;
-      await onFinish(data);
+      const res = await fetch(`${BACKEND_BASE_URL}/api/items`, {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({ ...data, kind: "snippet" }),
+      })
+      const json = await res.json();
+      
+      if (json.similarItems?.length > 0) {
+        setCreatedItemId(json.data.id);
+        setSimilarItems(json.similarItems);
+        setShowSimilarDialog(true);
+      } else {
+        invalidate({ resource: "snippets", invalidates: ["list"] });
+        navigate("/snippets");
+      }
     } catch (error) {
       console.error("Error creating snippet:", error);
     }
@@ -434,6 +456,33 @@ const SnippetCreate = () => {
             </Form>
           </CardContent>
         </Card>
+        {showSimilarDialog && (
+        <SimilarityDialog
+          items={similarItems}
+          onChoice={async (choice, targetId) => {
+            if (choice === "standalone") {
+              // Nessun link, naviga direttamente
+              invalidate({ resource: "snippets", invalidates: ["list"] });
+              navigate(`/snippets/show/${createdItemId}`);
+              return;
+            }
+            // Link as variant (create edge: parent → child)
+            await fetch(`${BACKEND_BASE_URL}/api/items/${createdItemId}/link`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ parentId: targetId }),
+            });
+            invalidate({ resource: "snippets", invalidates: ["list"] });
+            // Naviga al parent
+            navigate(`/snippets/show/${targetId}`);
+          }}
+          onClose={() => {
+            setShowSimilarDialog(false);
+            invalidate({ resource: "snippets", invalidates: ["list"] });
+            navigate(`/snippets/show/${createdItemId}`);
+          }}
+        />
+      )}
       </div>
     </CreateView>
   );

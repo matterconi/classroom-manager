@@ -18,3 +18,17 @@ export async function generate(prompt: string): Promise<string | undefined> {
 	}
 	return result?.choices[0]?.message.content;
 }
+
+export async function generateJSON<T>(systemPrompt: string, userPrompt: string): Promise<T> {
+	const result = await client.chat.completions.create({
+		model: "deepseek-chat",
+		response_format: { type: "json_object" },
+		messages: [
+			{ role: "system", content: systemPrompt },
+			{ role: "user", content: userPrompt },
+		],
+	});
+	const content = result?.choices[0]?.message.content;
+	if (!content) throw new Error("DeepSeek returned empty response");
+	return JSON.parse(content) as T;
+}

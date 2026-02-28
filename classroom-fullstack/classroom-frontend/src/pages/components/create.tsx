@@ -131,7 +131,7 @@ const ComponentCreate = () => {
   const handleGenerate = async () => {
     const name = form.getValues("name");
     const files = form.getValues("files");
-    const res = await fetch(`${BACKEND_BASE_URL}/api/components/meta`);
+    const res = await fetch(`${BACKEND_BASE_URL}/api/items/meta?kind=component`);
     const meta = await res.json();
 
     const prompt = buildComponentPrompt(name, files, {

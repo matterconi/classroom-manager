@@ -4,8 +4,8 @@ import {
   varchar,
   text,
   jsonb,
+  boolean,
   pgTable,
-  pgEnum,
   timestamp,
   index,
   vector,
@@ -21,19 +21,10 @@ const timestamps = {
     .notNull(),
 };
 
-// ── Enums ──────────────────────────────────────────────────────────────────────
+// ── Shared types ──────────────────────────────────────────────────────────────
 
-export const stackEnum = pgEnum("collection_stack", [
-  "frontend",
-  "backend",
-  "fullstack",
-]);
-
-export const theoryTypeEnum = pgEnum("theory_type", [
-  "algorithm",
-  "data-structure",
-  "design-pattern",
-]);
+export type UseCase = { title: string; use: string };
+export type ItemKind = "snippet" | "component" | "collection";
 
 // ── Categories ────────────────────────────────────────────────────────────────
 
@@ -47,200 +38,161 @@ export const categories = pgTable("categories", {
   ...timestamps,
 });
 
-// ── Components ────────────────────────────────────────────────────────────────
+// ── Edges (all relationships) ────────────────────────────────────────────────
 
-export const components = pgTable(
-  "components",
+export const edges = pgTable(
+  "edges",
   {
     id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
-    categoryId: integer("category_id").references(() => categories.id, {
-      onDelete: "set null",
-    }),
-    name: varchar("name", { length: 255 }).notNull(),
-    slug: varchar("slug", { length: 255 }).notNull().unique(),
-    type: varchar("type", { length: 50 }),
-    domain: varchar("domain", { length: 50 }),
-    description: text("description"),
-    useCases: text("use_cases"),
-    libraries: jsonb("libraries").$type<string[]>(),
-    tags: jsonb("tags").$type<string[]>(),
-    variants:
-      jsonb("variants").$type<{ prop: string; options: string[] }[]>(),
-    entryFile: varchar("entry_file", { length: 255 }),
-    embedding: vector("embedding", { dimensions: 1536 }),
-    ...timestamps,
-  },
-  (table) => [index("components_category_id_idx").on(table.categoryId)],
-);
-
-// ── Component Files ─────────────────────────────────────────────────────────
-
-export const componentFiles = pgTable(
-  "component_files",
-  {
-    id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
-    componentId: integer("component_id")
-      .notNull()
-      .references(() => components.id, { onDelete: "cascade" }),
-    name: varchar("name", { length: 255 }).notNull(),
-    code: text("code").notNull(),
-    order: integer("order").default(0).notNull(),
-    ...timestamps,
+    sourceId: integer("source_id").notNull(),
+    targetId: integer("target_id").notNull(),
+    resource: text("resource").notNull(), // 'item'
+    type: text("type").notNull(), // 'parent' | 'expansion' | 'belongs_to'
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().default({}),
+    createdAt: timestamp("created_at").defaultNow(),
   },
   (table) => [
-    index("component_files_component_id_idx").on(table.componentId),
+    index("idx_edges_source").on(table.sourceId),
+    index("idx_edges_target").on(table.targetId),
+    index("idx_edges_resource_type").on(table.resource, table.type),
   ],
 );
 
-// ── Collections ───────────────────────────────────────────────────────────────
+// ── Items (unified: snippet | component | collection) ────────────────────────
 
-export const collections = pgTable(
-  "collections",
+export const items = pgTable(
+  "items",
   {
     id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+    kind: text("kind").$type<ItemKind>().notNull(),
     categoryId: integer("category_id").references(() => categories.id, {
       onDelete: "set null",
     }),
     name: varchar("name", { length: 255 }).notNull(),
     slug: varchar("slug", { length: 255 }).notNull().unique(),
     description: text("description"),
-    domain: varchar("domain", { length: 50 }),
-    stack: stackEnum("stack"),
-    libraries: jsonb("libraries").$type<string[]>(),
-    tags: jsonb("tags").$type<string[]>(),
-    entryFile: varchar("entry_file", { length: 255 }),
-    embedding: vector("embedding", { dimensions: 1536 }),
-    ...timestamps,
-  },
-  (table) => [index("collections_category_id_idx").on(table.categoryId)],
-);
-
-// ── Collection Files ──────────────────────────────────────────────────────────
-
-export const collectionFiles = pgTable(
-  "collection_files",
-  {
-    id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
-    collectionId: integer("collection_id")
-      .notNull()
-      .references(() => collections.id, { onDelete: "cascade" }),
-    name: varchar("name", { length: 255 }).notNull(),
-    code: text("code").notNull(),
-    language: varchar("language", { length: 50 }),
-    order: integer("order").default(0).notNull(),
-    ...timestamps,
-  },
-  (table) => [
-    index("collection_files_collection_id_idx").on(table.collectionId),
-  ],
-);
-
-// ── Snippets ─────────────────────────────────────────────────────────────────
-
-export const snippets = pgTable(
-  "snippets",
-  {
-    id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
-    categoryId: integer("category_id").references(() => categories.id, {
-      onDelete: "set null",
-    }),
-    name: varchar("name", { length: 255 }).notNull(),
-    slug: varchar("slug", { length: 255 }).notNull().unique(),
-    description: text("description"),
-    code: text("code").notNull(),
+    code: text("code"),
     type: varchar("type", { length: 50 }),
     domain: varchar("domain", { length: 50 }),
     stack: varchar("stack", { length: 50 }),
     language: varchar("language", { length: 50 }),
-    useCases: text("use_cases"),
+    useCases: jsonb("use_cases").$type<UseCase[]>(),
     libraries: jsonb("libraries").$type<string[]>(),
     tags: jsonb("tags").$type<string[]>(),
+    variants: jsonb("variants").$type<{ prop: string; options: string[] }[]>(),
+    entryFile: varchar("entry_file", { length: 255 }),
+    isAbstract: boolean("is_abstract").default(false),
+    centroidEmbedding: vector("centroid_embedding", { dimensions: 1536 }),
+    lastCoherenceCheck: timestamp("last_coherence_check"),
     embedding: vector("embedding", { dimensions: 1536 }),
     ...timestamps,
   },
-  (table) => [index("snippets_category_id_idx").on(table.categoryId)],
+  (table) => [
+    index("items_kind_idx").on(table.kind),
+    index("items_category_id_idx").on(table.categoryId),
+  ],
 );
 
-// ── Theory ───────────────────────────────────────────────────────────────────
+// ── Item Files ──────────────────────────────────────────────────────────────
 
-export const theory = pgTable(
-  "theory",
+export const itemFiles = pgTable(
+  "item_files",
   {
     id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
-    categoryId: integer("category_id").references(() => categories.id, {
-      onDelete: "set null",
-    }),
+    itemId: integer("item_id")
+      .notNull()
+      .references(() => items.id, { onDelete: "cascade" }),
     name: varchar("name", { length: 255 }).notNull(),
-    slug: varchar("slug", { length: 255 }).notNull().unique(),
-    description: text("description"),
     code: text("code").notNull(),
-    type: theoryTypeEnum("type"),
-    domain: varchar("domain", { length: 50 }),
-    complexity: varchar("complexity", { length: 50 }),
-    useCases: text("use_cases"),
-    tags: jsonb("tags").$type<string[]>(),
-    embedding: vector("embedding", { dimensions: 1536 }),
+    language: varchar("language", { length: 50 }),
+    order: integer("order").default(0).notNull(),
     ...timestamps,
   },
-  (table) => [index("theory_category_id_idx").on(table.categoryId)],
+  (table) => [index("item_files_item_id_idx").on(table.itemId)],
+);
+
+// ── Demos ────────────────────────────────────────────────────────────────────
+
+export const demos = pgTable(
+  "demos",
+  {
+    id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+    itemId: integer("item_id")
+      .notNull()
+      .references(() => items.id, { onDelete: "cascade" }),
+    label: varchar("label", { length: 255 }), // null = default, "shiny" = variant
+    props: jsonb("props").$type<Record<string, unknown>>().default({}),
+    sourceDemoId: integer("source_demo_id").references((): any => demos.id, {
+      onDelete: "set null",
+    }),
+    entryFile: varchar("entry_file", { length: 255 }),
+    dependencies: jsonb("dependencies").$type<string[]>().default([]),
+    missing: jsonb("missing")
+      .$type<{ name: string; reason: string }[]>()
+      .default([]),
+    notes: text("notes"),
+    ...timestamps,
+  },
+  (table) => [
+    index("idx_demos_item_id").on(table.itemId),
+    index("idx_demos_source_demo_id").on(table.sourceDemoId),
+  ],
+);
+
+export const demoFiles = pgTable(
+  "demo_files",
+  {
+    id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+    demoId: integer("demo_id")
+      .notNull()
+      .references(() => demos.id, { onDelete: "cascade" }),
+    name: varchar("name", { length: 255 }).notNull(),
+    code: text("code").notNull(),
+    language: varchar("language", { length: 50 }),
+    order: integer("order").default(0).notNull(),
+    ...timestamps,
+  },
+  (table) => [index("idx_demo_files_demo_id").on(table.demoId)],
 );
 
 // ── Relations ──────────────────────────────────────────────────────────────────
 
 export const categoryRelations = relations(categories, ({ many }) => ({
-  components: many(components),
-  collections: many(collections),
-  snippets: many(snippets),
-  theory: many(theory),
+  items: many(items),
 }));
 
-export const componentRelations = relations(components, ({ one, many }) => ({
+export const itemRelations = relations(items, ({ one, many }) => ({
   category: one(categories, {
-    fields: [components.categoryId],
+    fields: [items.categoryId],
     references: [categories.id],
   }),
-  files: many(componentFiles),
+  files: many(itemFiles),
 }));
 
-export const componentFileRelations = relations(
-  componentFiles,
-  ({ one }) => ({
-    component: one(components, {
-      fields: [componentFiles.componentId],
-      references: [components.id],
-    }),
-  }),
-);
-
-export const collectionRelations = relations(collections, ({ one, many }) => ({
-  category: one(categories, {
-    fields: [collections.categoryId],
-    references: [categories.id],
-  }),
-  files: many(collectionFiles),
-}));
-
-export const collectionFileRelations = relations(
-  collectionFiles,
-  ({ one }) => ({
-    collection: one(collections, {
-      fields: [collectionFiles.collectionId],
-      references: [collections.id],
-    }),
-  }),
-);
-
-export const snippetRelations = relations(snippets, ({ one }) => ({
-  category: one(categories, {
-    fields: [snippets.categoryId],
-    references: [categories.id],
+export const itemFileRelations = relations(itemFiles, ({ one }) => ({
+  item: one(items, {
+    fields: [itemFiles.itemId],
+    references: [items.id],
   }),
 }));
 
-export const theoryRelations = relations(theory, ({ one }) => ({
-  category: one(categories, {
-    fields: [theory.categoryId],
-    references: [categories.id],
+export const demoRelations = relations(demos, ({ one, many }) => ({
+  item: one(items, {
+    fields: [demos.itemId],
+    references: [items.id],
+  }),
+  sourceDemo: one(demos, {
+    fields: [demos.sourceDemoId],
+    references: [demos.id],
+    relationName: "propScaled",
+  }),
+  files: many(demoFiles),
+}));
+
+export const demoFileRelations = relations(demoFiles, ({ one }) => ({
+  demo: one(demos, {
+    fields: [demoFiles.demoId],
+    references: [demos.id],
   }),
 }));
 
@@ -249,20 +201,17 @@ export const theoryRelations = relations(theory, ({ one }) => ({
 export type Category = typeof categories.$inferSelect;
 export type NewCategory = typeof categories.$inferInsert;
 
-export type Component = typeof components.$inferSelect;
-export type NewComponent = typeof components.$inferInsert;
+export type Item = typeof items.$inferSelect;
+export type NewItem = typeof items.$inferInsert;
 
-export type ComponentFile = typeof componentFiles.$inferSelect;
-export type NewComponentFile = typeof componentFiles.$inferInsert;
+export type ItemFile = typeof itemFiles.$inferSelect;
+export type NewItemFile = typeof itemFiles.$inferInsert;
 
-export type Collection = typeof collections.$inferSelect;
-export type NewCollection = typeof collections.$inferInsert;
+export type Edge = typeof edges.$inferSelect;
+export type NewEdge = typeof edges.$inferInsert;
 
-export type CollectionFile = typeof collectionFiles.$inferSelect;
-export type NewCollectionFile = typeof collectionFiles.$inferInsert;
+export type Demo = typeof demos.$inferSelect;
+export type NewDemo = typeof demos.$inferInsert;
 
-export type Snippet = typeof snippets.$inferSelect;
-export type NewSnippet = typeof snippets.$inferInsert;
-
-export type Theory = typeof theory.$inferSelect;
-export type NewTheory = typeof theory.$inferInsert;
+export type DemoFile = typeof demoFiles.$inferSelect;
+export type NewDemoFile = typeof demoFiles.$inferInsert;

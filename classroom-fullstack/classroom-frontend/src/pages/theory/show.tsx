@@ -65,9 +65,9 @@ const TheoryShow = () => {
               {record.type && (
                 <Badge variant="secondary">{typeLabel}</Badge>
               )}
-              {record.complexity && (
+              {record.domain && (
                 <Badge variant="secondary" className="font-mono">
-                  {record.complexity}
+                  {record.domain}
                 </Badge>
               )}
             </div>
