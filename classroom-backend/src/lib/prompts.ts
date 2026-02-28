@@ -451,53 +451,184 @@ ${newItem.code}
 Generate the expansion object and any field updates.`;
 }
 
-// ── Auto-classify files ──────────────────────────────────────────────────
+// ── Decompose: Outline + Classify (Phase 1a) ────────────────────────────
 
-export const CLASSIFY_FILES_SYSTEM_PROMPT = `You are a code analyst. Given source files, you analyze them and return structured metadata.
+export const DECOMPOSE_OUTLINE_SYSTEM_PROMPT = `You are a code architect and classifier. Given FILE SIGNATURES (name + first ~30 lines), you:
+1. CLASSIFY the top-level organism (kind, metadata)
+2. DECOMPOSE into DIRECT CHILDREN ONLY: sub-organisms and/or molecules
 
-CLASSIFICATION RULES:
+CLASSIFICATION RULES (for organism.kind):
 - 1 file with a single function/hook/utility → kind: "snippet"
 - 1 file with JSX/React component → kind: "component"
 - Multiple files forming a UI component → kind: "component"
 - Multiple files forming a utility/config/middleware collection → kind: "collection"
 
+HIERARCHY DEFINITIONS:
+- MOLECULE: a unit (one or more files) that combines pieces from the SAME domain.
+- SUB_ORGANISM: a unit that crosses domain boundaries. Can contain other sub-organisms or molecules.
+- ORGANISM: the top-level unit that combines molecules/sub-organisms from DIFFERENT domains.
+
+IMPORTANT: Do NOT identify atoms. Atoms will be extracted in a later step by decomposing each molecule. Only return the FIRST level of decomposition (direct children of the organism).
+
 RESPOND with ONLY this JSON:
 {
-  "kind": "snippet" | "component" | "collection",
-  "name": "string (descriptive PascalCase name for components, camelCase for snippets)",
-  "description": "string (2-3 sentences)",
-  "type": "string (element type or snippet type)",
-  "domain": "string (functional area)",
-  "stack": "frontend" | "backend" | "fullstack",
-  "language": "string (primary language)",
-  "category": "string (broad navigational area)",
-  "libraries": ["string (npm packages from imports)"],
-  "tags": ["string (1-3 lowercase keywords)"],
-  "useCases": [{"title": "string", "use": "string"}],
-  "entryFile": "string (main entry point filename, must match a file name exactly)"
+  "organism": {
+    "name": "string (PascalCase for components, camelCase for snippets)",
+    "description": "string (2-3 sentences)",
+    "kind": "snippet" | "component" | "collection",
+    "type": "string (element type: hook, component, utility, middleware, etc.)",
+    "domain": "string (functional area: auth, forms, 3d, etc.)",
+    "stack": "frontend" | "backend" | "fullstack",
+    "language": "string (primary language)",
+    "category": "string (broad navigational group)",
+    "libraries": ["string (npm packages from imports only)"],
+    "tags": ["string (1-3 lowercase singular keywords)"],
+    "useCases": [{"title": "string", "use": "string"}],
+    "entryFile": "string (main entry point filename)",
+    "is_demoable": boolean,
+    "files": ["all filenames"]
+  },
+  "sub_organisms": [
+    {
+      "name": "string",
+      "description": "string",
+      "is_demoable": boolean,
+      "files": ["filename.tsx"],
+      "parent": "organism name"
+    }
+  ],
+  "molecules": [
+    {
+      "name": "string",
+      "description": "string",
+      "is_demoable": boolean,
+      "files": ["filename.tsx"],
+      "parent": "organism or sub-organism name"
+    }
+  ]
 }
 
 RULES:
 - Respond with ONLY valid JSON. No markdown, no backticks.
-- "name": derive from the code's purpose, not from filenames.
+- Every file must belong to at least one piece (sub_organism or molecule).
+- Do NOT return atoms — they will be extracted later from each molecule.
+- A single large file with multiple functions → classify as a MOLECULE (atoms extracted later).
 - "libraries": only npm packages actually imported. No built-in modules.
 - "tags": lowercase, singular (e.g. "animation" not "animations").
-- "entryFile": the file with the default export or main entry. For snippets with 1 file, use that file.
-- "useCases": 2-4 practical use cases.`.trim();
+- "entryFile": the file with the default export or main entry.
+- "useCases": 2-4 practical use cases.
+- Every piece (except organism) MUST have a parent field.`.trim();
 
-export function buildClassifyUserPrompt(
+export function buildOutlineUserPrompt(
+	files: { name: string; signature: string }[],
+	meta?: { types?: string[]; domains?: string[]; tags?: string[]; categories?: string[] },
+): string {
+	const sigBlocks = files
+		.map((f) => `--- ${f.name} ---\n${f.signature}`)
+		.join("\n\n");
+
+	const metaBlock: string[] = [];
+	if (meta?.types?.length) metaBlock.push(`EXISTING TYPES: ${meta.types.join(", ")}. Prefer these if they fit.`);
+	if (meta?.domains?.length) metaBlock.push(`EXISTING DOMAINS: ${meta.domains.join(", ")}. Prefer these if they fit.`);
+	if (meta?.tags?.length) metaBlock.push(`EXISTING TAGS: ${meta.tags.join(", ")}. Prefer these if they fit.`);
+	if (meta?.categories?.length) metaBlock.push(`EXISTING CATEGORIES: ${meta.categories.join(", ")}. Prefer these if they fit.`);
+
+	return `FILE SIGNATURES (${files.length} files):\n\n${sigBlocks}${metaBlock.length > 0 ? "\n\n" + metaBlock.join("\n") : ""}\n\nClassify the organism and decompose into hierarchy.`;
+}
+
+// ── Decompose: Children (Phase 1b — sub_organism → sub_organisms/molecules) ──
+
+export const DECOMPOSE_CHILDREN_SYSTEM_PROMPT = `You are a code architect. Given a PARENT piece and its source files (full code), identify its DIRECT CHILDREN.
+
+Children can be:
+- SUB_ORGANISMS: units that cross domain boundaries. They will be recursively decomposed.
+- MOLECULES: units within the SAME domain. They will be decomposed into atoms in a later step.
+
+IMPORTANT: Do NOT identify atoms. Only return the next level of decomposition.
+
+For each child:
+- name: descriptive name
+- description: 1-2 sentences about what this piece does
+- files: which source files belong to this piece
+- is_demoable: can this be rendered standalone? (true for UI, false for pure logic/backend)
+
+RESPOND with ONLY this JSON:
+{
+  "sub_organisms": [
+    {
+      "name": "string",
+      "description": "string",
+      "is_demoable": boolean,
+      "files": ["filename.tsx"]
+    }
+  ],
+  "molecules": [
+    {
+      "name": "string",
+      "description": "string",
+      "is_demoable": boolean,
+      "files": ["filename.tsx"]
+    }
+  ]
+}
+
+RULES:
+- Respond with ONLY valid JSON. No markdown, no backticks.
+- Every file must belong to at least one child.
+- Do NOT return atoms.
+- A single file with multiple functions → classify as a MOLECULE.`.trim();
+
+export function buildDecomposeChildrenUserPrompt(
+	parentName: string,
+	parentDescription: string,
 	files: { name: string; code: string }[],
-	meta: { types?: string[]; domains?: string[]; tags?: string[]; categories?: string[] },
 ): string {
 	const fileBlocks = files
 		.map((f) => `--- ${f.name} ---\n${f.code}`)
 		.join("\n\n");
 
-	const metaBlock: string[] = [];
-	if (meta.types?.length) metaBlock.push(`EXISTING TYPES: ${meta.types.join(", ")}. Prefer these if they fit.`);
-	if (meta.domains?.length) metaBlock.push(`EXISTING DOMAINS: ${meta.domains.join(", ")}. Prefer these if they fit.`);
-	if (meta.tags?.length) metaBlock.push(`EXISTING TAGS: ${meta.tags.join(", ")}. Prefer these if they fit.`);
-	if (meta.categories?.length) metaBlock.push(`EXISTING CATEGORIES: ${meta.categories.join(", ")}. Prefer these if they fit.`);
+	return `PARENT: "${parentName}"
+Description: ${parentDescription}
 
-	return `FILES (${files.length}):\n\n${fileBlocks}\n\n${metaBlock.join("\n")}\n\nClassify and return metadata.`;
+SOURCE FILES (${files.length}):\n\n${fileBlocks}\n\nDecompose into direct children (sub_organisms and/or molecules). Do NOT identify atoms.`;
+}
+
+// ── Decompose: Atom Extraction (Phase 1c) ────────────────────────────────
+
+export const DECOMPOSE_DETAIL_SYSTEM_PROMPT = `You are a code extractor. Given a MOLECULE's source files, you extract individual atoms (functions, hooks, utilities, handlers).
+
+For each atom you find:
+- name: descriptive name (camelCase for functions, PascalCase for components)
+- description: 1 sentence about what this atom does
+- code: the FULL extracted code of this atom (function signature + body, including JSDoc/comments directly above it)
+- is_demoable: can this be rendered standalone? (true for UI elements, false for pure logic)
+
+RULES:
+- Extract EVERY distinct function, hook, handler, or exported utility.
+- Do NOT include import statements in atom code — only the function/const itself.
+- Do NOT merge multiple functions into one atom.
+- If a helper function is only used by one main function, include it as part of that atom's code.
+- Respond with ONLY valid JSON. No markdown, no backticks.
+
+RESPOND with ONLY this JSON:
+{
+  "atoms": [
+    {
+      "name": "string",
+      "description": "string",
+      "code": "string (full function body)",
+      "is_demoable": boolean
+    }
+  ]
+}`.trim();
+
+export function buildDetailUserPrompt(
+	moleculeName: string,
+	files: { name: string; code: string }[],
+): string {
+	const fileBlocks = files
+		.map((f) => `--- ${f.name} ---\n${f.code}`)
+		.join("\n\n");
+
+	return `MOLECULE: "${moleculeName}"\n\nSOURCE FILES (${files.length}):\n\n${fileBlocks}\n\nExtract all atoms with their code.`;
 }

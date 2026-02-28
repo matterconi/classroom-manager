@@ -10,18 +10,13 @@ import {
   getTableColumns,
 } from "drizzle-orm";
 import { db } from "../index.js";
-import { items, itemFiles, categories, edges, demos } from "../schema/index.js";
+import { items, itemFiles, categories, edges } from "../schema/index.js";
 import { generateEmbedding } from "../../lib/embeddings.js";
 import { rerankCandidates, type ScoringFields } from "../../lib/scoring.js";
 import type { JudgeCandidateInput } from "../../lib/prompts.js";
 import type { ItemKind } from "../schema/app.js";
-import { runHierarchyPipeline } from "../../lib/hierarchy-pipeline.js";
+import { decomposeOutline, runHierarchyPipeline, type OutlineResult } from "../../lib/hierarchy-pipeline.js";
 import { createDemoForComponent, saveDemoToDB } from "../../lib/render-pipeline.js";
-import { generateJSON } from "../../lib/deepseek.js";
-import {
-  CLASSIFY_FILES_SYSTEM_PROMPT,
-  buildClassifyUserPrompt,
-} from "../../lib/prompts.js";
 
 const LIMIT_MAX = 100;
 const SEARCH_MAX_LENGTH = 100;
@@ -470,11 +465,12 @@ router.post("/", async (req: express.Request, res: express.Response) => {
       files,
     } = req.body;
 
-    // ── Auto-classify mode: only files provided ─────────────────────────────
+    // ── Auto mode: only files provided → outline classifies + decomposes ────
 
-    const autoClassify = !kind && !name && files && Array.isArray(files) && files.length > 0;
+    const autoMode = !kind && !name && files && Array.isArray(files) && files.length > 0;
+    let outline: OutlineResult | null = null;
 
-    if (autoClassify) {
+    if (autoMode) {
       // Validate files
       for (const file of files) {
         if (!file.name || typeof file.name !== "string") {
@@ -487,7 +483,7 @@ router.post("/", async (req: express.Request, res: express.Response) => {
         }
       }
 
-      // Fetch existing meta for better classification
+      // Fetch existing meta for classification consistency
       const [typesRow, domainsRow, tagsRow, catsRow] = await Promise.all([
         db.selectDistinct({ value: items.type }).from(items).where(sql`${items.type} IS NOT NULL`),
         db.selectDistinct({ value: items.domain }).from(items).where(sql`${items.domain} IS NOT NULL`),
@@ -502,31 +498,22 @@ router.post("/", async (req: express.Request, res: express.Response) => {
         categories: catsRow.map((r) => r.name),
       };
 
-      type ClassifyResult = {
-        kind: string; name: string; description?: string; type?: string;
-        domain?: string; stack?: string; language?: string; category?: string;
-        libraries?: string[]; tags?: string[]; entryFile?: string;
-        useCases?: { title: string; use: string }[];
-      };
+      // 1 DS call: classify + decompose in one shot (replaces old classify + decompose)
+      outline = await decomposeOutline(files, meta);
+      console.log(`[ingest] Outline: ${outline.organism.kind} "${outline.organism.name}" → ${outline.sub_organisms.length} sub_organisms, ${outline.molecules.length} molecules`);
 
-      const classified = await generateJSON<ClassifyResult>(
-        CLASSIFY_FILES_SYSTEM_PROMPT,
-        buildClassifyUserPrompt(files, meta),
-      );
-      console.log(`[auto-classify] ${classified.kind}: "${classified.name}"`);
-
-      // Apply classified fields (AI fills what user didn't provide)
-      kind = classified.kind;
-      name = classified.name;
-      description = classified.description || null;
-      type = classified.type || null;
-      domain = classified.domain || null;
-      stack = classified.stack || null;
-      language = classified.language || null;
-      libraries = classified.libraries || null;
-      tags = classified.tags || null;
-      useCases = classified.useCases || null;
-      entryFile = classified.entryFile || null;
+      // Apply classification fields from outline organism
+      kind = outline.organism.kind;
+      name = outline.organism.name;
+      description = outline.organism.description || null;
+      type = outline.organism.type || null;
+      domain = outline.organism.domain || null;
+      stack = outline.organism.stack || null;
+      language = outline.organism.language || null;
+      libraries = outline.organism.libraries || null;
+      tags = outline.organism.tags || null;
+      useCases = outline.organism.useCases || null;
+      entryFile = outline.organism.entryFile || null;
 
       // For snippets: extract code from the single file
       if (kind === "snippet" && files.length === 1) {
@@ -534,24 +521,24 @@ router.post("/", async (req: express.Request, res: express.Response) => {
       }
 
       // Auto-create category if AI suggested one
-      if (classified.category) {
+      if (outline.organism.category) {
         const match = catsRow.find(
-          (c) => c.name.toLowerCase() === classified.category!.toLowerCase(),
+          (c) => c.name.toLowerCase() === outline!.organism.category!.toLowerCase(),
         );
         if (match) {
           const [cat] = await db.select({ id: categories.id }).from(categories).where(eq(categories.name, match.name));
           categoryId = cat?.id || null;
         } else {
-          const [newCat] = await db.insert(categories).values({ name: classified.category, slug: slugify(classified.category) }).returning();
+          const [newCat] = await db.insert(categories).values({ name: outline.organism.category, slug: slugify(outline.organism.category) }).returning();
           categoryId = newCat?.id || null;
-          console.log(`[auto-classify] Created category "${classified.category}"`);
+          console.log(`[ingest] Created category "${outline.organism.category}"`);
         }
       }
     }
 
     // ── Manual mode validation ──────────────────────────────────────────────
 
-    if (!autoClassify) {
+    if (!autoMode) {
       if (!kind || !VALID_KINDS.includes(kind)) {
         res.status(400).json({ error: "kind is required (snippet | component | collection)" });
         return;
@@ -586,7 +573,7 @@ router.post("/", async (req: express.Request, res: express.Response) => {
       }
     }
 
-    // ── Phase 0: Create item ──────────────────────────────────────────────────
+    // ── Create organism item ────────────────────────────────────────────────
 
     const slug = slugify(name) + "-" + Date.now();
 
@@ -630,7 +617,7 @@ router.post("/", async (req: express.Request, res: express.Response) => {
       await db.insert(itemFiles).values(fileValues);
     }
 
-    // Generate embedding
+    // Generate organism embedding
     const useCasesText = Array.isArray(useCases)
       ? useCases.map((uc: { title: string; use: string }) => `${uc.title} ${uc.use}`).join(" ")
       : "";
@@ -652,7 +639,7 @@ router.post("/", async (req: express.Request, res: express.Response) => {
       return;
     }
 
-    // ── Component/Collection: full pipeline ───────────────────────────────────
+    // ── Component/Collection: hierarchy + demos ──────────────────────────────
 
     const sourceFiles = files.map((f: { name: string; code: string; language?: string }) => ({
       name: f.name,
@@ -660,65 +647,48 @@ router.post("/", async (req: express.Request, res: express.Response) => {
       language: f.language || undefined,
     }));
 
-    // Phase 1: Hierarchy (decompose + AIA per piece + belongs_to edges)
+    // If manual mode, we need an outline for decompose (auto mode already has it)
+    if (!outline) {
+      try {
+        outline = await decomposeOutline(sourceFiles);
+      } catch (err) {
+        console.error("[ingest] Outline failed:", err);
+        res.status(201).json({ data: created, hierarchy: null, demos: [] });
+        return;
+      }
+    }
+
+    // Phase 1: Hierarchy (outline + detail extraction + AIA + belongs_to edges)
     let hierarchyResult: Awaited<ReturnType<typeof runHierarchyPipeline>> | null = null;
     try {
-      hierarchyResult = await runHierarchyPipeline(created.id, sourceFiles);
+      hierarchyResult = await runHierarchyPipeline(created.id, outline, sourceFiles);
       console.log(`[ingest] Hierarchy: ${hierarchyResult.items.length} pieces resolved`);
     } catch (err) {
       console.error("[ingest] Hierarchy pipeline failed:", err);
-      // Graceful degradation — return item without pipeline results
       res.status(201).json({ data: created, hierarchy: null, demos: [] });
       return;
     }
 
-    // Phase 2: Demos — use hierarchy verdicts, no re-searching
+    // Phase 2: Demos — only for NEW demoable pieces (reused items already have demos)
     const demosCreated: { itemId: number; demoId: number; name: string; action: string }[] = [];
-
-    // Build name → decompose piece map (for file references)
-    const allDecomposePieces = [
-      ...hierarchyResult.decomposition.sub_organisms,
-      ...hierarchyResult.decomposition.molecules,
-      ...hierarchyResult.decomposition.atoms,
-    ];
-    const decomposePieceMap = new Map(allDecomposePieces.map(p => [p.name, p]));
 
     for (const piece of hierarchyResult.items) {
       if (!piece.makeDemo) continue;
+      if (piece.action === "reused") continue; // Reused items already have demos — skip
       if (piece.verdict === "expansion") continue;
 
       try {
-        if (piece.action === "reused" && piece.matchedItemId) {
-          // Variant — check if the matched item already has a demo
-          const [existingDemo] = await db
-            .select()
-            .from(demos)
-            .where(and(eq(demos.itemId, piece.matchedItemId), sql`${demos.label} IS NULL`))
-            .limit(1);
-
-          if (existingDemo) {
-            // Prop-scaled: point to existing demo, no duplicate files
-            const demoId = await saveDemoToDB(
-              piece.itemId,
-              { files: [], entry_file: "", dependencies: [], missing: [], notes: `Reuses demo from item #${piece.matchedItemId}` },
-              undefined,
-              existingDemo.id,
-              (existingDemo.props as Record<string, unknown>) || {},
-            );
-            demosCreated.push({ itemId: piece.itemId, demoId, name: piece.name, action: "reused" });
-            console.log(`[ingest] Demo reused for "${piece.name}" from item #${piece.matchedItemId}`);
-            continue;
-          }
-          // Matched item has no demo — fall through to create fresh
+        // Determine source files for demo: use piece.code (extracted) or piece.files
+        let demoSourceFiles: { name: string; code: string }[];
+        if (piece.code) {
+          // Atom with extracted code — wrap as virtual file
+          demoSourceFiles = [{ name: `${piece.name}.tsx`, code: piece.code }];
+        } else {
+          demoSourceFiles = sourceFiles.filter((f: { name: string }) => piece.files.includes(f.name));
         }
 
-        // New item or no existing demo — create fresh demo
-        const decomposePiece = decomposePieceMap.get(piece.name);
-        const pieceFileNames = decomposePiece?.files || [];
-        const pieceFiles = sourceFiles.filter((f: { name: string }) => pieceFileNames.includes(f.name));
-
-        if (pieceFiles.length > 0) {
-          const demoResult = await createDemoForComponent(piece.name, pieceFiles);
+        if (demoSourceFiles.length > 0) {
+          const demoResult = await createDemoForComponent(piece.name, demoSourceFiles);
           const demoId = await saveDemoToDB(piece.itemId, demoResult);
           demosCreated.push({ itemId: piece.itemId, demoId, name: piece.name, action: "created" });
           console.log(`[ingest] Demo created for "${piece.name}"`);
@@ -728,15 +698,12 @@ router.post("/", async (req: express.Request, res: express.Response) => {
       }
     }
 
-    // Organism demo (the top-level component itself)
-    if (hierarchyResult.decomposition.organism.is_demoable) {
+    // Organism demo (top-level component)
+    if (outline.organism.is_demoable) {
       try {
-        const demoResult = await createDemoForComponent(
-          hierarchyResult.decomposition.organism.name,
-          sourceFiles,
-        );
+        const demoResult = await createDemoForComponent(outline.organism.name, sourceFiles);
         const demoId = await saveDemoToDB(created.id, demoResult);
-        demosCreated.push({ itemId: created.id, demoId, name: hierarchyResult.decomposition.organism.name, action: "created" });
+        demosCreated.push({ itemId: created.id, demoId, name: outline.organism.name, action: "created" });
         console.log(`[ingest] Organism demo created for "${name}"`);
       } catch (err) {
         console.error("[ingest] Organism demo failed:", err);
@@ -853,7 +820,8 @@ router.post("/:id/decompose", async (req: express.Request, res: express.Response
       return;
     }
 
-    const result = await runHierarchyPipeline(itemId, sourceFiles);
+    const outline = await decomposeOutline(sourceFiles);
+    const result = await runHierarchyPipeline(itemId, outline, sourceFiles);
 
     res.status(201).json({ data: result });
   } catch (e) {
