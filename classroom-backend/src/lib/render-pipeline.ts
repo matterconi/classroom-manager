@@ -141,7 +141,7 @@ async function scaleWithProps(
 
 // ── Save Demo to DB ──────────────────────────────────────────────────────────
 
-async function saveDemoToDB(
+export async function saveDemoToDB(
 	itemId: number,
 	demoResult: CreateDemoResult,
 	label?: string | undefined,

@@ -137,3 +137,7 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
+
+# APM insight
+apminsightdata/
+apminsightnode.json

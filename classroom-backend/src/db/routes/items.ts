@@ -10,12 +10,18 @@ import {
   getTableColumns,
 } from "drizzle-orm";
 import { db } from "../index.js";
-import { items, itemFiles, categories, edges } from "../schema/index.js";
+import { items, itemFiles, categories, edges, demos } from "../schema/index.js";
 import { generateEmbedding } from "../../lib/embeddings.js";
 import { rerankCandidates, type ScoringFields } from "../../lib/scoring.js";
 import type { JudgeCandidateInput } from "../../lib/prompts.js";
 import type { ItemKind } from "../schema/app.js";
 import { runHierarchyPipeline } from "../../lib/hierarchy-pipeline.js";
+import { createDemoForComponent, saveDemoToDB } from "../../lib/render-pipeline.js";
+import { generateJSON } from "../../lib/deepseek.js";
+import {
+  CLASSIFY_FILES_SYSTEM_PROMPT,
+  buildClassifyUserPrompt,
+} from "../../lib/prompts.js";
 
 const LIMIT_MAX = 100;
 const SEARCH_MAX_LENGTH = 100;
@@ -442,11 +448,11 @@ router.get("/:id", async (req: express.Request, res: express.Response) => {
   }
 });
 
-// ── POST / — Create item ──────────────────────────────────────────────────────
+// ── POST / — Create item (+ full pipeline for components/collections) ────────
 
 router.post("/", async (req: express.Request, res: express.Response) => {
   try {
-    const {
+    let {
       kind,
       name,
       code,
@@ -464,29 +470,12 @@ router.post("/", async (req: express.Request, res: express.Response) => {
       files,
     } = req.body;
 
-    if (!kind || !VALID_KINDS.includes(kind)) {
-      res.status(400).json({ error: "kind is required (snippet | component | collection)" });
-      return;
-    }
+    // ── Auto-classify mode: only files provided ─────────────────────────────
 
-    if (!name || typeof name !== "string") {
-      res.status(400).json({ error: "Name is required" });
-      return;
-    }
+    const autoClassify = !kind && !name && files && Array.isArray(files) && files.length > 0;
 
-    // Snippets require code
-    if (kind === "snippet" && (!code || typeof code !== "string")) {
-      res.status(400).json({ error: "Code is required for snippets" });
-      return;
-    }
-
-    // Components/collections require files
-    if ((kind === "component" || kind === "collection") && (!files || !Array.isArray(files) || files.length === 0)) {
-      res.status(400).json({ error: "At least one file is required for components/collections" });
-      return;
-    }
-
-    if (files && Array.isArray(files)) {
+    if (autoClassify) {
+      // Validate files
       for (const file of files) {
         if (!file.name || typeof file.name !== "string") {
           res.status(400).json({ error: "Each file must have a name" });
@@ -497,7 +486,107 @@ router.post("/", async (req: express.Request, res: express.Response) => {
           return;
         }
       }
+
+      // Fetch existing meta for better classification
+      const [typesRow, domainsRow, tagsRow, catsRow] = await Promise.all([
+        db.selectDistinct({ value: items.type }).from(items).where(sql`${items.type} IS NOT NULL`),
+        db.selectDistinct({ value: items.domain }).from(items).where(sql`${items.domain} IS NOT NULL`),
+        db.execute(sql`SELECT DISTINCT t.value FROM items, jsonb_array_elements_text(tags) AS t(value) WHERE tags IS NOT NULL ORDER BY t.value`),
+        db.select({ name: categories.name }).from(categories),
+      ]);
+
+      const meta = {
+        types: typesRow.map((r) => r.value).filter(Boolean) as string[],
+        domains: domainsRow.map((r) => r.value).filter(Boolean) as string[],
+        tags: (tagsRow.rows as { value: string }[]).map((r) => r.value),
+        categories: catsRow.map((r) => r.name),
+      };
+
+      type ClassifyResult = {
+        kind: string; name: string; description?: string; type?: string;
+        domain?: string; stack?: string; language?: string; category?: string;
+        libraries?: string[]; tags?: string[]; entryFile?: string;
+        useCases?: { title: string; use: string }[];
+      };
+
+      const classified = await generateJSON<ClassifyResult>(
+        CLASSIFY_FILES_SYSTEM_PROMPT,
+        buildClassifyUserPrompt(files, meta),
+      );
+      console.log(`[auto-classify] ${classified.kind}: "${classified.name}"`);
+
+      // Apply classified fields (AI fills what user didn't provide)
+      kind = classified.kind;
+      name = classified.name;
+      description = classified.description || null;
+      type = classified.type || null;
+      domain = classified.domain || null;
+      stack = classified.stack || null;
+      language = classified.language || null;
+      libraries = classified.libraries || null;
+      tags = classified.tags || null;
+      useCases = classified.useCases || null;
+      entryFile = classified.entryFile || null;
+
+      // For snippets: extract code from the single file
+      if (kind === "snippet" && files.length === 1) {
+        code = files[0].code;
+      }
+
+      // Auto-create category if AI suggested one
+      if (classified.category) {
+        const match = catsRow.find(
+          (c) => c.name.toLowerCase() === classified.category!.toLowerCase(),
+        );
+        if (match) {
+          const [cat] = await db.select({ id: categories.id }).from(categories).where(eq(categories.name, match.name));
+          categoryId = cat?.id || null;
+        } else {
+          const [newCat] = await db.insert(categories).values({ name: classified.category, slug: slugify(classified.category) }).returning();
+          categoryId = newCat?.id || null;
+          console.log(`[auto-classify] Created category "${classified.category}"`);
+        }
+      }
     }
+
+    // ── Manual mode validation ──────────────────────────────────────────────
+
+    if (!autoClassify) {
+      if (!kind || !VALID_KINDS.includes(kind)) {
+        res.status(400).json({ error: "kind is required (snippet | component | collection)" });
+        return;
+      }
+
+      if (!name || typeof name !== "string") {
+        res.status(400).json({ error: "Name is required" });
+        return;
+      }
+
+      if (kind === "snippet" && (!code || typeof code !== "string")) {
+        res.status(400).json({ error: "Code is required for snippets" });
+        return;
+      }
+
+      if ((kind === "component" || kind === "collection") && (!files || !Array.isArray(files) || files.length === 0)) {
+        res.status(400).json({ error: "At least one file is required for components/collections" });
+        return;
+      }
+
+      if (files && Array.isArray(files)) {
+        for (const file of files) {
+          if (!file.name || typeof file.name !== "string") {
+            res.status(400).json({ error: "Each file must have a name" });
+            return;
+          }
+          if (!file.code || typeof file.code !== "string") {
+            res.status(400).json({ error: "Each file must have code" });
+            return;
+          }
+        }
+      }
+    }
+
+    // ── Phase 0: Create item ──────────────────────────────────────────────────
 
     const slug = slugify(name) + "-" + Date.now();
 
@@ -528,7 +617,7 @@ router.post("/", async (req: express.Request, res: express.Response) => {
     }
 
     // Insert files for component/collection
-    if (files && Array.isArray(files) && files.length > 0) {
+    if (files && Array.isArray(files) && files.length > 0 && (kind === "component" || kind === "collection")) {
       const fileValues = files.map(
         (file: { name: string; code: string; language?: string }, i: number) => ({
           itemId: created.id,
@@ -556,7 +645,109 @@ router.post("/", async (req: express.Request, res: express.Response) => {
       console.error("Embedding generation failed:", err);
     }
 
-    res.status(201).json({ data: created });
+    // ── Snippet: done ─────────────────────────────────────────────────────────
+
+    if (kind === "snippet") {
+      res.status(201).json({ data: created });
+      return;
+    }
+
+    // ── Component/Collection: full pipeline ───────────────────────────────────
+
+    const sourceFiles = files.map((f: { name: string; code: string; language?: string }) => ({
+      name: f.name,
+      code: f.code,
+      language: f.language || undefined,
+    }));
+
+    // Phase 1: Hierarchy (decompose + AIA per piece + belongs_to edges)
+    let hierarchyResult: Awaited<ReturnType<typeof runHierarchyPipeline>> | null = null;
+    try {
+      hierarchyResult = await runHierarchyPipeline(created.id, sourceFiles);
+      console.log(`[ingest] Hierarchy: ${hierarchyResult.items.length} pieces resolved`);
+    } catch (err) {
+      console.error("[ingest] Hierarchy pipeline failed:", err);
+      // Graceful degradation — return item without pipeline results
+      res.status(201).json({ data: created, hierarchy: null, demos: [] });
+      return;
+    }
+
+    // Phase 2: Demos — use hierarchy verdicts, no re-searching
+    const demosCreated: { itemId: number; demoId: number; name: string; action: string }[] = [];
+
+    // Build name → decompose piece map (for file references)
+    const allDecomposePieces = [
+      ...hierarchyResult.decomposition.sub_organisms,
+      ...hierarchyResult.decomposition.molecules,
+      ...hierarchyResult.decomposition.atoms,
+    ];
+    const decomposePieceMap = new Map(allDecomposePieces.map(p => [p.name, p]));
+
+    for (const piece of hierarchyResult.items) {
+      if (!piece.makeDemo) continue;
+      if (piece.verdict === "expansion") continue;
+
+      try {
+        if (piece.action === "reused" && piece.matchedItemId) {
+          // Variant — check if the matched item already has a demo
+          const [existingDemo] = await db
+            .select()
+            .from(demos)
+            .where(and(eq(demos.itemId, piece.matchedItemId), sql`${demos.label} IS NULL`))
+            .limit(1);
+
+          if (existingDemo) {
+            // Prop-scaled: point to existing demo, no duplicate files
+            const demoId = await saveDemoToDB(
+              piece.itemId,
+              { files: [], entry_file: "", dependencies: [], missing: [], notes: `Reuses demo from item #${piece.matchedItemId}` },
+              undefined,
+              existingDemo.id,
+              (existingDemo.props as Record<string, unknown>) || {},
+            );
+            demosCreated.push({ itemId: piece.itemId, demoId, name: piece.name, action: "reused" });
+            console.log(`[ingest] Demo reused for "${piece.name}" from item #${piece.matchedItemId}`);
+            continue;
+          }
+          // Matched item has no demo — fall through to create fresh
+        }
+
+        // New item or no existing demo — create fresh demo
+        const decomposePiece = decomposePieceMap.get(piece.name);
+        const pieceFileNames = decomposePiece?.files || [];
+        const pieceFiles = sourceFiles.filter((f: { name: string }) => pieceFileNames.includes(f.name));
+
+        if (pieceFiles.length > 0) {
+          const demoResult = await createDemoForComponent(piece.name, pieceFiles);
+          const demoId = await saveDemoToDB(piece.itemId, demoResult);
+          demosCreated.push({ itemId: piece.itemId, demoId, name: piece.name, action: "created" });
+          console.log(`[ingest] Demo created for "${piece.name}"`);
+        }
+      } catch (err) {
+        console.error(`[ingest] Demo failed for "${piece.name}":`, err);
+      }
+    }
+
+    // Organism demo (the top-level component itself)
+    if (hierarchyResult.decomposition.organism.is_demoable) {
+      try {
+        const demoResult = await createDemoForComponent(
+          hierarchyResult.decomposition.organism.name,
+          sourceFiles,
+        );
+        const demoId = await saveDemoToDB(created.id, demoResult);
+        demosCreated.push({ itemId: created.id, demoId, name: hierarchyResult.decomposition.organism.name, action: "created" });
+        console.log(`[ingest] Organism demo created for "${name}"`);
+      } catch (err) {
+        console.error("[ingest] Organism demo failed:", err);
+      }
+    }
+
+    res.status(201).json({
+      data: created,
+      hierarchy: hierarchyResult,
+      demos: demosCreated,
+    });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: "Internal server error" });

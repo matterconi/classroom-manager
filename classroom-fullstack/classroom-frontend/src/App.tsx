@@ -12,7 +12,7 @@ import { Toaster } from "./components/refine-ui/notification/toaster";
 import { useNotificationProvider } from "./components/refine-ui/notification/use-notification-provider";
 import { ThemeProvider } from "./components/refine-ui/theme/theme-provider";
 import { dataProvider } from "./providers/data";
-import { Home, Code2, FolderOpen, Braces, BookOpen, Tag } from "lucide-react";
+import { Home, Code2, FolderOpen, Braces, BookOpen, Tag, Upload } from "lucide-react";
 import { Layout } from "./components/refine-ui/layout/layout";
 import DashBoard from "./pages/dashboard";
 import ComponentsList from "./pages/components/list";
@@ -29,6 +29,7 @@ import TheoryCreate from "./pages/theory/create";
 import TheoryShow from "./pages/theory/show";
 import CategoriesList from "./pages/categories/list";
 import CategoryCreate from "./pages/categories/create";
+import UploadPage from "./pages/upload";
 
 function App() {
   return (
@@ -51,6 +52,11 @@ function App() {
                   name: "dashboard",
                   list: "/",
                   meta: { label: "Home", icon: <Home /> },
+                },
+                {
+                  name: "upload",
+                  list: "/upload",
+                  meta: { label: "Upload", icon: <Upload /> },
                 },
                 {
                   name: "components",
@@ -97,6 +103,7 @@ function App() {
                   }
                 >
                   <Route path="/" element={<DashBoard />} />
+                  <Route path="/upload" element={<UploadPage />} />
 
                   <Route path="components">
                     <Route index element={<ComponentsList />} />

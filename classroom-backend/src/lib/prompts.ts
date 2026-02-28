@@ -450,3 +450,54 @@ ${newItem.code}
 
 Generate the expansion object and any field updates.`;
 }
+
+// ── Auto-classify files ──────────────────────────────────────────────────
+
+export const CLASSIFY_FILES_SYSTEM_PROMPT = `You are a code analyst. Given source files, you analyze them and return structured metadata.
+
+CLASSIFICATION RULES:
+- 1 file with a single function/hook/utility → kind: "snippet"
+- 1 file with JSX/React component → kind: "component"
+- Multiple files forming a UI component → kind: "component"
+- Multiple files forming a utility/config/middleware collection → kind: "collection"
+
+RESPOND with ONLY this JSON:
+{
+  "kind": "snippet" | "component" | "collection",
+  "name": "string (descriptive PascalCase name for components, camelCase for snippets)",
+  "description": "string (2-3 sentences)",
+  "type": "string (element type or snippet type)",
+  "domain": "string (functional area)",
+  "stack": "frontend" | "backend" | "fullstack",
+  "language": "string (primary language)",
+  "category": "string (broad navigational area)",
+  "libraries": ["string (npm packages from imports)"],
+  "tags": ["string (1-3 lowercase keywords)"],
+  "useCases": [{"title": "string", "use": "string"}],
+  "entryFile": "string (main entry point filename, must match a file name exactly)"
+}
+
+RULES:
+- Respond with ONLY valid JSON. No markdown, no backticks.
+- "name": derive from the code's purpose, not from filenames.
+- "libraries": only npm packages actually imported. No built-in modules.
+- "tags": lowercase, singular (e.g. "animation" not "animations").
+- "entryFile": the file with the default export or main entry. For snippets with 1 file, use that file.
+- "useCases": 2-4 practical use cases.`.trim();
+
+export function buildClassifyUserPrompt(
+	files: { name: string; code: string }[],
+	meta: { types?: string[]; domains?: string[]; tags?: string[]; categories?: string[] },
+): string {
+	const fileBlocks = files
+		.map((f) => `--- ${f.name} ---\n${f.code}`)
+		.join("\n\n");
+
+	const metaBlock: string[] = [];
+	if (meta.types?.length) metaBlock.push(`EXISTING TYPES: ${meta.types.join(", ")}. Prefer these if they fit.`);
+	if (meta.domains?.length) metaBlock.push(`EXISTING DOMAINS: ${meta.domains.join(", ")}. Prefer these if they fit.`);
+	if (meta.tags?.length) metaBlock.push(`EXISTING TAGS: ${meta.tags.join(", ")}. Prefer these if they fit.`);
+	if (meta.categories?.length) metaBlock.push(`EXISTING CATEGORIES: ${meta.categories.join(", ")}. Prefer these if they fit.`);
+
+	return `FILES (${files.length}):\n\n${fileBlocks}\n\n${metaBlock.join("\n")}\n\nClassify and return metadata.`;
+}

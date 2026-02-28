@@ -12,7 +12,7 @@
  * or create a new one. This avoids duplicates.
  */
 
-import { eq, and, sql, asc } from "drizzle-orm";
+import { eq, and, sql } from "drizzle-orm";
 import { db } from "../db/index.js";
 import { items, edges } from "../db/schema/index.js";
 import type { ItemKind } from "../db/schema/app.js";
@@ -56,12 +56,21 @@ type JudgeResponse = {
 	matches: JudgeMatch[];
 };
 
+type ResolveResult = {
+	itemId: number;
+	action: "created" | "reused";
+	verdict: "variant" | "parent_of" | "expansion" | null;
+	matchedItemId: number | null;
+};
+
 type PieceRecord = {
 	name: string;
 	itemId: number;
 	level: string;
 	action: "created" | "reused";
 	makeDemo: boolean;
+	verdict: "variant" | "parent_of" | "expansion" | null;
+	matchedItemId: number | null;
 };
 
 type EdgeRecord = {
@@ -242,7 +251,7 @@ async function resolveItem(
 	piece: DecomposePiece,
 	level: string,
 	context: string,
-): Promise<{ itemId: number; action: "created" | "reused" }> {
+): Promise<ResolveResult> {
 	const kind = levelToKind(level);
 
 	// Build description with context for better matching
@@ -276,7 +285,7 @@ async function resolveItem(
 				console.log(
 					`[hierarchy] Reusing item ${bestMatch.candidateId} for "${piece.name}" (${bestMatch.verdict}, confidence: ${bestMatch.confidence})`,
 				);
-				return { itemId: bestMatch.candidateId, action: "reused" };
+				return { itemId: bestMatch.candidateId, action: "reused", verdict: bestMatch.verdict, matchedItemId: bestMatch.candidateId };
 			}
 
 			if (bestMatch.verdict === "expansion") {
@@ -297,7 +306,7 @@ async function resolveItem(
 				console.log(
 					`[hierarchy] Created item ${itemId} as expansion of ${bestMatch.candidateId} for "${piece.name}"`,
 				);
-				return { itemId, action: "created" };
+				return { itemId, action: "created", verdict: "expansion", matchedItemId: bestMatch.candidateId };
 			}
 		}
 	}
@@ -305,7 +314,7 @@ async function resolveItem(
 	// No match or no candidates — create new item
 	const itemId = await createItem(piece, kind);
 	console.log(`[hierarchy] Created new item ${itemId} for "${piece.name}"`);
-	return { itemId, action: "created" };
+	return { itemId, action: "created", verdict: null, matchedItemId: null };
 }
 
 /**
@@ -398,7 +407,7 @@ export async function runHierarchyPipeline(
 	for (const subOrg of decomposition.sub_organisms) {
 		try {
 			const context = `Sub-organism of "${decomposition.organism.name}". Contains molecules: ${moleculeContext}`;
-			const { itemId, action } = await resolveItem(
+			const { itemId, action, verdict, matchedItemId } = await resolveItem(
 				subOrg,
 				"sub_organism",
 				context,
@@ -422,6 +431,8 @@ export async function runHierarchyPipeline(
 				level: "sub_organism",
 				action,
 				makeDemo: subOrg.is_demoable,
+				verdict,
+				matchedItemId,
 			});
 		} catch (err) {
 			console.error(
@@ -436,7 +447,7 @@ export async function runHierarchyPipeline(
 		try {
 			const fileContext = molecule.files.slice(0, 5).join(", ");
 			const context = `Molecule of "${decomposition.organism.name}". Files: ${fileContext}`;
-			const { itemId, action } = await resolveItem(
+			const { itemId, action, verdict, matchedItemId } = await resolveItem(
 				molecule,
 				"molecule",
 				context,
@@ -460,6 +471,8 @@ export async function runHierarchyPipeline(
 				level: "molecule",
 				action,
 				makeDemo: molecule.is_demoable,
+				verdict,
+				matchedItemId,
 			});
 		} catch (err) {
 			console.error(
@@ -473,7 +486,7 @@ export async function runHierarchyPipeline(
 	for (const atom of decomposition.atoms) {
 		try {
 			const context = `Atom of "${decomposition.organism.name}". File: ${atom.files[0] || atom.name}`;
-			const { itemId, action } = await resolveItem(atom, "atom", context);
+			const { itemId, action, verdict, matchedItemId } = await resolveItem(atom, "atom", context);
 
 			resolvedItems.set(atom.name, itemId);
 
@@ -491,6 +504,8 @@ export async function runHierarchyPipeline(
 				level: "atom",
 				action,
 				makeDemo: atom.is_demoable,
+				verdict,
+				matchedItemId,
 			});
 		} catch (err) {
 			console.error(
