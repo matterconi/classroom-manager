@@ -693,6 +693,34 @@ async function createBelongsToEdge(
 	logs: LogEntry[],
 	metadata?: Record<string, unknown>,
 ): Promise<void> {
+	// Invariant: no self-loops
+	if (childId === parentId) {
+		plog(logs, "edge", `SKIP self-loop belongs_to: item #${childId} → #${parentId}`, {
+			data: { sourceId: childId, targetId: parentId, reason: "self-loop" },
+		});
+		return;
+	}
+
+	// Invariant: no duplicate belongs_to edges
+	const [existing] = await db
+		.select({ id: edges.id })
+		.from(edges)
+		.where(
+			and(
+				eq(edges.sourceId, childId),
+				eq(edges.targetId, parentId),
+				eq(edges.type, "belongs_to"),
+			),
+		)
+		.limit(1);
+
+	if (existing) {
+		plog(logs, "edge", `SKIP duplicate belongs_to: item #${childId} → #${parentId} (edge #${existing.id} exists)`, {
+			data: { sourceId: childId, targetId: parentId, existingEdgeId: existing.id },
+		});
+		return;
+	}
+
 	await db.insert(edges).values({
 		sourceId: childId,
 		targetId: parentId,
@@ -749,14 +777,18 @@ async function processChildren(
 			const result = await resolveItem(piece, "sub_organism", context, logs);
 			resolvedItems.set(subOrg.name, result.itemId);
 
-			await createBelongsToEdge(result.itemId, parentItemId, logs, {
-				level: "sub_organism",
-			});
-			edgeRecords.push({
-				sourceId: result.itemId,
-				targetId: parentItemId,
-				type: "belongs_to",
-			});
+			if (result.itemId !== parentItemId) {
+				await createBelongsToEdge(result.itemId, parentItemId, logs, {
+					level: "sub_organism",
+				});
+				edgeRecords.push({
+					sourceId: result.itemId,
+					targetId: parentItemId,
+					type: "belongs_to",
+				});
+			} else {
+				plog(logs, "edge", `Skipped belongs_to: "${subOrg.name}" resolved to parent #${parentItemId} itself`, { item: subOrg.name });
+			}
 			records.push({
 				name: subOrg.name,
 				itemId: result.itemId,
@@ -814,14 +846,18 @@ async function processChildren(
 			const result = await resolveItem(piece, "molecule", context, logs);
 			resolvedItems.set(molecule.name, result.itemId);
 
-			await createBelongsToEdge(result.itemId, parentItemId, logs, {
-				level: "molecule",
-			});
-			edgeRecords.push({
-				sourceId: result.itemId,
-				targetId: parentItemId,
-				type: "belongs_to",
-			});
+			if (result.itemId !== parentItemId) {
+				await createBelongsToEdge(result.itemId, parentItemId, logs, {
+					level: "molecule",
+				});
+				edgeRecords.push({
+					sourceId: result.itemId,
+					targetId: parentItemId,
+					type: "belongs_to",
+				});
+			} else {
+				plog(logs, "edge", `Skipped belongs_to: "${molecule.name}" resolved to parent #${parentItemId} itself`, { item: molecule.name });
+			}
 			records.push({
 				name: molecule.name,
 				itemId: result.itemId,
@@ -867,17 +903,21 @@ async function processChildren(
 								);
 								resolvedItems.set(atom.name, atomResult.itemId);
 
-								await createBelongsToEdge(
-									atomResult.itemId,
-									result.itemId,
-									logs,
-									{ level: "atom" },
-								);
-								edgeRecords.push({
-									sourceId: atomResult.itemId,
-									targetId: result.itemId,
-									type: "belongs_to",
-								});
+								if (atomResult.itemId !== result.itemId) {
+									await createBelongsToEdge(
+										atomResult.itemId,
+										result.itemId,
+										logs,
+										{ level: "atom" },
+									);
+									edgeRecords.push({
+										sourceId: atomResult.itemId,
+										targetId: result.itemId,
+										type: "belongs_to",
+									});
+								} else {
+									plog(logs, "edge", `Skipped belongs_to: "${atom.name}" resolved to parent #${result.itemId} itself`, { item: atom.name });
+								}
 								records.push({
 									name: atom.name,
 									itemId: atomResult.itemId,
@@ -969,8 +1009,9 @@ export async function runHierarchyPipeline(
 		for (const f of p.files) assignedFiles.add(f);
 	}
 
+	const entryFile = outline.organism.entryFile;
 	const orphanFiles = sourceFiles.filter(
-		(f) => !assignedFiles.has(f.name),
+		(f) => !assignedFiles.has(f.name) && f.name !== entryFile,
 	);
 	if (orphanFiles.length > 0) {
 		plog(logs, "orphans", `${orphanFiles.length} orphan file(s): ${orphanFiles.map((f) => f.name).join(", ")}`, {

@@ -536,6 +536,29 @@ router.post("/", async (req: express.Request, res: express.Response) => {
       }
     }
 
+    // ── Idempotency: reject if organism with same name+kind already exists ──
+
+    if (name && kind) {
+      const [existingOrganism] = await db
+        .select({ id: items.id, name: items.name })
+        .from(items)
+        .where(
+          and(
+            sql`LOWER(${items.name}) = LOWER(${name})`,
+            eq(items.kind, kind as "snippet" | "component" | "collection"),
+          ),
+        )
+        .limit(1);
+
+      if (existingOrganism) {
+        res.status(409).json({
+          error: `"${existingOrganism.name}" (id: ${existingOrganism.id}) already exists with kind "${kind}"`,
+          existingId: existingOrganism.id,
+        });
+        return;
+      }
+    }
+
     // ── Manual mode validation ──────────────────────────────────────────────
 
     if (!autoMode) {
