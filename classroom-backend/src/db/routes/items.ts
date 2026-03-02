@@ -15,8 +15,8 @@ import { generateEmbedding } from "../../lib/embeddings.js";
 import { rerankCandidates, type ScoringFields } from "../../lib/scoring.js";
 import type { JudgeCandidateInput } from "../../lib/prompts.js";
 import type { ItemKind } from "../schema/app.js";
-import { decomposeOutline, runHierarchyPipeline, type OutlineResult } from "../../lib/hierarchy-pipeline.js";
-import { createDemoForComponent, saveDemoToDB } from "../../lib/render-pipeline.js";
+import { decomposeOutline, runHierarchyPipeline, type OutlineResult, type LogEntry } from "../../lib/hierarchy-pipeline.js";
+// import { createDemoForComponent, saveDemoToDB } from "../../lib/render-pipeline.js"; // DISABLED for diagnostics
 
 const LIMIT_MAX = 100;
 const SEARCH_MAX_LENGTH = 100;
@@ -658,6 +658,38 @@ router.post("/", async (req: express.Request, res: express.Response) => {
       }
     }
 
+    // Collect ingest-level logs (outline info before pipeline starts)
+    const ingestLogs: LogEntry[] = [];
+    ingestLogs.push({
+      ts: new Date().toISOString(),
+      step: "outline",
+      detail: `Outline complete: ${outline.organism.kind} "${outline.organism.name}"`,
+      data: {
+        organism: {
+          name: outline.organism.name,
+          kind: outline.organism.kind,
+          type: outline.organism.type,
+          domain: outline.organism.domain,
+          stack: outline.organism.stack,
+          language: outline.organism.language,
+          category: outline.organism.category,
+          tags: outline.organism.tags,
+          libraries: outline.organism.libraries,
+          is_demoable: outline.organism.is_demoable,
+          entryFile: outline.organism.entryFile,
+          files: outline.organism.files,
+        },
+        sub_organisms: outline.sub_organisms.map((s) => ({ name: s.name, files: s.files, is_demoable: s.is_demoable })),
+        molecules: outline.molecules.map((m) => ({ name: m.name, files: m.files, is_demoable: m.is_demoable })),
+      },
+    });
+    ingestLogs.push({
+      ts: new Date().toISOString(),
+      step: "organism-created",
+      detail: `Organism item #${created.id} "${name}" created in DB`,
+      data: { itemId: created.id, kind, name },
+    });
+
     // Phase 1: Hierarchy (outline + detail extraction + AIA + belongs_to edges)
     let hierarchyResult: Awaited<ReturnType<typeof runHierarchyPipeline>> | null = null;
     try {
@@ -665,55 +697,21 @@ router.post("/", async (req: express.Request, res: express.Response) => {
       console.log(`[ingest] Hierarchy: ${hierarchyResult.items.length} pieces resolved`);
     } catch (err) {
       console.error("[ingest] Hierarchy pipeline failed:", err);
-      res.status(201).json({ data: created, hierarchy: null, demos: [] });
+      res.status(201).json({ data: created, hierarchy: null, demos: [], logs: ingestLogs });
       return;
     }
 
-    // Phase 2: Demos — only for NEW demoable pieces (reused items already have demos)
+    // Phase 2: Demos — DISABLED for diagnostics
     const demosCreated: { itemId: number; demoId: number; name: string; action: string }[] = [];
 
-    for (const piece of hierarchyResult.items) {
-      if (!piece.makeDemo) continue;
-      if (piece.action === "reused") continue; // Reused items already have demos — skip
-      if (piece.verdict === "expansion") continue;
-
-      try {
-        // Determine source files for demo: use piece.code (extracted) or piece.files
-        let demoSourceFiles: { name: string; code: string }[];
-        if (piece.code) {
-          // Atom with extracted code — wrap as virtual file
-          demoSourceFiles = [{ name: `${piece.name}.tsx`, code: piece.code }];
-        } else {
-          demoSourceFiles = sourceFiles.filter((f: { name: string }) => piece.files.includes(f.name));
-        }
-
-        if (demoSourceFiles.length > 0) {
-          const demoResult = await createDemoForComponent(piece.name, demoSourceFiles);
-          const demoId = await saveDemoToDB(piece.itemId, demoResult);
-          demosCreated.push({ itemId: piece.itemId, demoId, name: piece.name, action: "created" });
-          console.log(`[ingest] Demo created for "${piece.name}"`);
-        }
-      } catch (err) {
-        console.error(`[ingest] Demo failed for "${piece.name}":`, err);
-      }
-    }
-
-    // Organism demo (top-level component)
-    if (outline.organism.is_demoable) {
-      try {
-        const demoResult = await createDemoForComponent(outline.organism.name, sourceFiles);
-        const demoId = await saveDemoToDB(created.id, demoResult);
-        demosCreated.push({ itemId: created.id, demoId, name: outline.organism.name, action: "created" });
-        console.log(`[ingest] Organism demo created for "${name}"`);
-      } catch (err) {
-        console.error("[ingest] Organism demo failed:", err);
-      }
-    }
+    // Merge ingest-level logs + pipeline logs
+    const allLogs = [...ingestLogs, ...(hierarchyResult.logs || [])];
 
     res.status(201).json({
       data: created,
       hierarchy: hierarchyResult,
       demos: demosCreated,
+      logs: allLogs,
     });
   } catch (e) {
     console.error(e);

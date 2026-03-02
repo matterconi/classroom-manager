@@ -123,10 +123,38 @@ type EdgeRecord = {
 	type: string;
 };
 
+export type LogEntry = {
+	ts: string;
+	step: string;
+	level?: string;
+	item?: string;
+	detail: string;
+	data?: unknown;
+};
+
 export type HierarchyResult = {
 	items: PieceRecord[];
 	edges: EdgeRecord[];
+	logs: LogEntry[];
 };
+
+// ── Logger ───────────────────────────────────────────────────────────────────
+
+function plog(
+	logs: LogEntry[],
+	step: string,
+	detail: string,
+	extra?: { level?: string; item?: string; data?: unknown },
+): void {
+	const entry: LogEntry = {
+		ts: new Date().toISOString(),
+		step,
+		detail,
+		...extra,
+	};
+	logs.push(entry);
+	console.log(`[hierarchy][${step}]${extra?.item ? ` ${extra.item}:` : ""} ${detail}`);
+}
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -193,11 +221,21 @@ async function decomposeChildren(
 	parentName: string,
 	parentDescription: string,
 	files: FileInput[],
+	logs: LogEntry[],
 ): Promise<DecomposeChildrenResult> {
-	return generateJSON<DecomposeChildrenResult>(
+	plog(logs, "decompose-children", `Decomposing "${parentName}" (${files.length} files)`, { item: parentName });
+	const result = await generateJSON<DecomposeChildrenResult>(
 		DECOMPOSE_CHILDREN_SYSTEM_PROMPT,
 		buildDecomposeChildrenUserPrompt(parentName, parentDescription, files),
 	);
+	plog(logs, "decompose-children", `Result: ${result.sub_organisms.length} sub_organisms, ${result.molecules.length} molecules`, {
+		item: parentName,
+		data: {
+			sub_organisms: result.sub_organisms.map((s) => s.name),
+			molecules: result.molecules.map((m) => m.name),
+		},
+	});
+	return result;
 }
 
 // ── Phase 1c: Atom Extraction ────────────────────────────────────────────────
@@ -209,11 +247,17 @@ async function decomposeChildren(
 async function extractAtoms(
 	moleculeName: string,
 	moleculeFiles: FileInput[],
+	logs: LogEntry[],
 ): Promise<DetailAtom[]> {
+	plog(logs, "extract-atoms", `Extracting atoms from "${moleculeName}" (${moleculeFiles.length} files)`, { item: moleculeName });
 	const result = await generateJSON<{ atoms: DetailAtom[] }>(
 		DECOMPOSE_DETAIL_SYSTEM_PROMPT,
 		buildDetailUserPrompt(moleculeName, moleculeFiles),
 	);
+	plog(logs, "extract-atoms", `Found ${result.atoms.length} atoms: ${result.atoms.map((a) => a.name).join(", ")}`, {
+		item: moleculeName,
+		data: result.atoms.map((a) => ({ name: a.name, is_demoable: a.is_demoable })),
+	});
 	return result.atoms;
 }
 
@@ -236,10 +280,18 @@ async function tryAutoReuse(
 	name: string,
 	kind: ItemKind,
 	description: string,
+	logs: LogEntry[],
 ): Promise<AutoReuseResult> {
+	plog(logs, "auto-reuse", `Trying auto-reuse for "${name}" (kind: ${kind})`, { item: name });
+
 	const embeddingText = [name, description].filter(Boolean).join(" ");
 	const embedding = await generateEmbedding(embeddingText);
-	if (!embedding) return { reused: false, embedding: undefined };
+	if (!embedding) {
+		plog(logs, "auto-reuse", `Embedding generation failed — skipping`, { item: name });
+		return { reused: false, embedding: undefined };
+	}
+
+	plog(logs, "auto-reuse", `Embedding generated (${embedding.length} dims)`, { item: name });
 
 	const vectorStr = `[${embedding.join(",")}]`;
 
@@ -247,6 +299,7 @@ async function tryAutoReuse(
 	const [match] = await db
 		.select({
 			id: items.id,
+			name: items.name,
 			similarity:
 				sql<number>`1 - (${items.embedding} <=> ${vectorStr}::vector)`,
 		})
@@ -262,10 +315,17 @@ async function tryAutoReuse(
 		.limit(1);
 
 	if (match && match.similarity >= AUTO_REUSE_THRESHOLD) {
-		console.log(
-			`[hierarchy] Auto-reuse: "${name}" → item #${match.id} (cosine: ${match.similarity.toFixed(3)})`,
-		);
+		plog(logs, "auto-reuse", `AUTO-REUSE HIT: "${name}" → item #${match.id} "${match.name}" (cosine: ${match.similarity.toFixed(3)})`, {
+			item: name,
+			data: { matchedId: match.id, matchedName: match.name, similarity: match.similarity },
+		});
 		return { reused: true, itemId: match.id, embedding };
+	}
+
+	if (match) {
+		plog(logs, "auto-reuse", `Name match found but below threshold: item #${match.id} "${match.name}" (cosine: ${match.similarity.toFixed(3)}, threshold: ${AUTO_REUSE_THRESHOLD})`, { item: name });
+	} else {
+		plog(logs, "auto-reuse", `No name+kind match found in DB`, { item: name });
 	}
 
 	return { reused: false, embedding };
@@ -375,6 +435,7 @@ async function enrichWithFamilyContext(
 async function findSimilarCandidates(
 	name: string,
 	description: string,
+	logs: LogEntry[],
 	precomputedEmbedding?: number[],
 ): Promise<{ candidates: JudgeCandidateInput[]; embedding: number[] | undefined }> {
 	const embedding =
@@ -412,10 +473,18 @@ async function findSimilarCandidates(
 		.orderBy(sql`${items.embedding} <=> ${vectorStr}::vector`)
 		.limit(SIMILARITY_LIMIT);
 
+	plog(logs, "search", `Embedding search for "${name}": ${similarRaw.length} results above threshold ${EMBEDDING_THRESHOLD}`, {
+		item: name,
+		data: similarRaw.map((r) => ({ id: r.id, name: r.name, similarity: Number(r.similarity.toFixed(3)) })),
+	});
+
 	if (similarRaw.length === 0) return { candidates: [], embedding };
 
 	const newItemScoring: ScoringFields = {};
 	const top = rerankCandidates(newItemScoring, similarRaw, RERANK_TOP);
+
+	plog(logs, "rerank", `Top ${top.length} after reranking: ${top.map((c) => `#${c.id} "${c.name}" (${c.combinedScore.toFixed(3)})`).join(", ")}`, { item: name });
+
 	const candidateIds = top.map((c) => c.id);
 	const enriched = await enrichWithFamilyContext(candidateIds, top);
 
@@ -432,13 +501,17 @@ async function resolveItem(
 	piece: PieceToResolve,
 	level: string,
 	context: string,
+	logs: LogEntry[],
 ): Promise<ResolveResult> {
 	const kind = levelToKind(level);
 
+	plog(logs, "resolve", `── Resolving "${piece.name}" (level: ${level}, kind: ${kind}) ──`, { level, item: piece.name });
+
 	// Cascade 1: Auto-reuse by name + kind + vector ≥ 0.875
-	const autoReuse = await tryAutoReuse(piece.name, kind, piece.description);
+	const autoReuse = await tryAutoReuse(piece.name, kind, piece.description, logs);
 
 	if (autoReuse.reused && autoReuse.itemId) {
+		plog(logs, "resolve", `RESULT: REUSED (clone) → item #${autoReuse.itemId}`, { level, item: piece.name });
 		return {
 			itemId: autoReuse.itemId,
 			action: "reused",
@@ -454,10 +527,16 @@ async function resolveItem(
 	const { candidates, embedding } = await findSimilarCandidates(
 		piece.name,
 		richDescription,
+		logs,
 		autoReuse.embedding, // reuse — no extra OAI call
 	);
 
 	if (candidates.length > 0) {
+		plog(logs, "judge", `Sending ${candidates.length} candidates to judge for "${piece.name}"`, {
+			item: piece.name,
+			data: candidates.map((c) => ({ id: c.id, name: c.name, role: c.role, score: c.combinedScore })),
+		});
+
 		// Ask judge (1 DS call)
 		const judgeResult = await generateJSON<JudgeResponse>(
 			JUDGE_SYSTEM_PROMPT,
@@ -471,14 +550,21 @@ async function resolveItem(
 			),
 		);
 
+		plog(logs, "judge", `Judge response: ${judgeResult.matches.length} matches`, {
+			item: piece.name,
+			data: judgeResult.matches.map((m) => ({
+				candidateId: m.candidateId,
+				verdict: m.verdict,
+				confidence: m.confidence,
+				reasoning: m.reasoning,
+			})),
+		});
+
 		if (judgeResult.matches.length > 0) {
 			const best = judgeResult.matches[0]!;
 
 			if (best.verdict === "parent_of") {
-				// Existing item is more concrete — reuse it, skip children
-				console.log(
-					`[hierarchy] Reusing item ${best.candidateId} for "${piece.name}" (parent_of, confidence: ${best.confidence})`,
-				);
+				plog(logs, "resolve", `RESULT: REUSED (parent_of) → item #${best.candidateId} (confidence: ${best.confidence})`, { level, item: piece.name });
 				return {
 					itemId: best.candidateId,
 					action: "reused",
@@ -488,14 +574,7 @@ async function resolveItem(
 			}
 
 			if (best.verdict === "variant") {
-				// Different implementation of same concept — create own node,
-				// link via expansion edge, continue decomposing children.
-				// Children that already exist will be auto-reused (structural sharing).
-				const itemId = await createItem(
-					piece,
-					kind,
-					autoReuse.embedding || embedding,
-				);
+				const itemId = await createItem(piece, kind, logs, autoReuse.embedding || embedding);
 				await db.insert(edges).values({
 					sourceId: itemId,
 					targetId: best.candidateId,
@@ -509,9 +588,11 @@ async function resolveItem(
 						relationship: "variant",
 					},
 				});
-				console.log(
-					`[hierarchy] Created variant item ${itemId} of ${best.candidateId} for "${piece.name}"`,
-				);
+				plog(logs, "edge", `Created expansion edge: item #${itemId} → #${best.candidateId} (variant)`, {
+					item: piece.name,
+					data: { sourceId: itemId, targetId: best.candidateId, type: "expansion" },
+				});
+				plog(logs, "resolve", `RESULT: CREATED (variant of #${best.candidateId}) → item #${itemId}`, { level, item: piece.name });
 				return {
 					itemId,
 					action: "created",
@@ -521,11 +602,7 @@ async function resolveItem(
 			}
 
 			if (best.verdict === "expansion") {
-				const itemId = await createItem(
-					piece,
-					kind,
-					autoReuse.embedding || embedding,
-				);
+				const itemId = await createItem(piece, kind, logs, autoReuse.embedding || embedding);
 				await db.insert(edges).values({
 					sourceId: itemId,
 					targetId: best.candidateId,
@@ -538,9 +615,11 @@ async function resolveItem(
 						createdAt: new Date().toISOString(),
 					},
 				});
-				console.log(
-					`[hierarchy] Created item ${itemId} as expansion of ${best.candidateId} for "${piece.name}"`,
-				);
+				plog(logs, "edge", `Created expansion edge: item #${itemId} → #${best.candidateId} (expansion)`, {
+					item: piece.name,
+					data: { sourceId: itemId, targetId: best.candidateId, type: "expansion" },
+				});
+				plog(logs, "resolve", `RESULT: CREATED (expansion of #${best.candidateId}) → item #${itemId}`, { level, item: piece.name });
 				return {
 					itemId,
 					action: "created",
@@ -549,15 +628,13 @@ async function resolveItem(
 				};
 			}
 		}
+	} else {
+		plog(logs, "search", `No candidates found — skipping judge`, { item: piece.name });
 	}
 
 	// Cascade 3: No match — create new (reuse embedding)
-	const itemId = await createItem(
-		piece,
-		kind,
-		autoReuse.embedding || embedding,
-	);
-	console.log(`[hierarchy] Created new item ${itemId} for "${piece.name}"`);
+	const itemId = await createItem(piece, kind, logs, autoReuse.embedding || embedding);
+	plog(logs, "resolve", `RESULT: CREATED (new, no match) → item #${itemId}`, { level, item: piece.name });
 	return { itemId, action: "created", verdict: null, matchedItemId: null };
 }
 
@@ -566,6 +643,7 @@ async function resolveItem(
 async function createItem(
 	piece: PieceToResolve,
 	kind: ItemKind,
+	logs: LogEntry[],
 	precomputedEmbedding?: number[],
 ): Promise<number> {
 	const slug = slugify(piece.name) + "-" + Date.now();
@@ -583,6 +661,11 @@ async function createItem(
 
 	if (!created) throw new Error(`Failed to create item for "${piece.name}"`);
 
+	plog(logs, "create-item", `Inserted item #${created.id} "${piece.name}" (kind: ${kind}, code: ${piece.code ? "yes" : "no"})`, {
+		item: piece.name,
+		data: { id: created.id, kind, hasCode: !!piece.code },
+	});
+
 	// Use precomputed embedding if available, otherwise generate (fallback)
 	try {
 		const embedding =
@@ -593,12 +676,10 @@ async function createItem(
 				.update(items)
 				.set({ embedding })
 				.where(eq(items.id, created.id));
+			plog(logs, "create-item", `Embedding saved for item #${created.id}`, { item: piece.name });
 		}
 	} catch (err) {
-		console.error(
-			`[hierarchy] Embedding failed for "${piece.name}":`,
-			err,
-		);
+		plog(logs, "create-item", `Embedding FAILED for item #${created.id}: ${err}`, { item: piece.name });
 	}
 
 	return created.id;
@@ -609,6 +690,7 @@ async function createItem(
 async function createBelongsToEdge(
 	childId: number,
 	parentId: number,
+	logs: LogEntry[],
 	metadata?: Record<string, unknown>,
 ): Promise<void> {
 	await db.insert(edges).values({
@@ -617,6 +699,9 @@ async function createBelongsToEdge(
 		resource: "item",
 		type: "belongs_to",
 		metadata: metadata || {},
+	});
+	plog(logs, "edge", `Created belongs_to edge: item #${childId} → #${parentId} (${JSON.stringify(metadata || {})})`, {
+		data: { sourceId: childId, targetId: parentId, type: "belongs_to", metadata },
 	});
 }
 
@@ -644,7 +729,16 @@ async function processChildren(
 	records: PieceRecord[],
 	edgeRecords: EdgeRecord[],
 	resolvedItems: Map<string, number>,
+	logs: LogEntry[],
 ): Promise<void> {
+	plog(logs, "process", `Processing children of "${parentName}" (item #${parentItemId}): ${subOrganisms.length} sub_organisms, ${molecules.length} molecules`, {
+		item: parentName,
+		data: {
+			sub_organisms: subOrganisms.map((s) => s.name),
+			molecules: molecules.map((m) => m.name),
+		},
+	});
+
 	// ── Sub-organisms — sequential, 1 at a time ─────────────────────────
 
 	for (const subOrg of subOrganisms) {
@@ -652,10 +746,10 @@ async function processChildren(
 		const context = `Sub-organism of "${parentName}"`;
 
 		try {
-			const result = await resolveItem(piece, "sub_organism", context);
+			const result = await resolveItem(piece, "sub_organism", context, logs);
 			resolvedItems.set(subOrg.name, result.itemId);
 
-			await createBelongsToEdge(result.itemId, parentItemId, {
+			await createBelongsToEdge(result.itemId, parentItemId, logs, {
 				level: "sub_organism",
 			});
 			edgeRecords.push({
@@ -684,9 +778,7 @@ async function processChildren(
 						subOrg.name,
 						subOrg.description,
 						subFiles,
-					);
-					console.log(
-						`[hierarchy] Children of "${subOrg.name}": ${children.sub_organisms.length} sub_organisms, ${children.molecules.length} molecules`,
+						logs,
 					);
 
 					// Recurse
@@ -699,14 +791,16 @@ async function processChildren(
 						records,
 						edgeRecords,
 						resolvedItems,
+						logs,
 					);
+				} else {
+					plog(logs, "process", `No source files for sub_organism "${subOrg.name}" — skipping decompose`, { item: subOrg.name });
 				}
+			} else {
+				plog(logs, "process", `Sub_organism "${subOrg.name}" was reused — skipping decompose`, { item: subOrg.name });
 			}
 		} catch (err) {
-			console.error(
-				`[hierarchy] Failed sub_organism "${subOrg.name}":`,
-				err,
-			);
+			plog(logs, "error", `Failed sub_organism "${subOrg.name}": ${err}`, { item: subOrg.name });
 		}
 	}
 
@@ -717,10 +811,10 @@ async function processChildren(
 		const context = `Molecule of "${parentName}"`;
 
 		try {
-			const result = await resolveItem(piece, "molecule", context);
+			const result = await resolveItem(piece, "molecule", context, logs);
 			resolvedItems.set(molecule.name, result.itemId);
 
-			await createBelongsToEdge(result.itemId, parentItemId, {
+			await createBelongsToEdge(result.itemId, parentItemId, logs, {
 				level: "molecule",
 			});
 			edgeRecords.push({
@@ -749,9 +843,7 @@ async function processChildren(
 						const atoms = await extractAtoms(
 							molecule.name,
 							molFiles,
-						);
-						console.log(
-							`[hierarchy] Extracted ${atoms.length} atoms from "${molecule.name}"`,
+							logs,
 						);
 
 						// Resolve each atom
@@ -771,12 +863,14 @@ async function processChildren(
 									atomPiece,
 									"atom",
 									atomContext,
+									logs,
 								);
 								resolvedItems.set(atom.name, atomResult.itemId);
 
 								await createBelongsToEdge(
 									atomResult.itemId,
 									result.itemId,
+									logs,
 									{ level: "atom" },
 								);
 								edgeRecords.push({
@@ -796,25 +890,20 @@ async function processChildren(
 									files: [],
 								});
 							} catch (err) {
-								console.error(
-									`[hierarchy] Failed atom "${atom.name}":`,
-									err,
-								);
+								plog(logs, "error", `Failed atom "${atom.name}": ${err}`, { item: atom.name });
 							}
 						}
 					} catch (err) {
-						console.error(
-							`[hierarchy] Atom extraction failed for "${molecule.name}":`,
-							err,
-						);
+						plog(logs, "error", `Atom extraction failed for "${molecule.name}": ${err}`, { item: molecule.name });
 					}
+				} else {
+					plog(logs, "process", `No source files for molecule "${molecule.name}" — skipping atom extraction`, { item: molecule.name });
 				}
+			} else {
+				plog(logs, "process", `Molecule "${molecule.name}" was reused — skipping atom extraction`, { item: molecule.name });
 			}
 		} catch (err) {
-			console.error(
-				`[hierarchy] Failed molecule "${molecule.name}":`,
-				err,
-			);
+			plog(logs, "error", `Failed molecule "${molecule.name}": ${err}`, { item: molecule.name });
 		}
 	}
 }
@@ -840,8 +929,21 @@ export async function runHierarchyPipeline(
 	const records: PieceRecord[] = [];
 	const edgeRecords: EdgeRecord[] = [];
 	const resolvedItems = new Map<string, number>();
+	const logs: LogEntry[] = [];
 
 	resolvedItems.set(outline.organism.name, organismItemId);
+
+	plog(logs, "pipeline", `Starting hierarchy pipeline for organism #${organismItemId} "${outline.organism.name}"`, {
+		data: {
+			organismItemId,
+			organismName: outline.organism.name,
+			organismKind: outline.organism.kind,
+			totalFiles: sourceFiles.length,
+			fileNames: sourceFiles.map((f) => f.name),
+			outlineSubOrganisms: outline.sub_organisms.map((s) => ({ name: s.name, files: s.files })),
+			outlineMolecules: outline.molecules.map((m) => ({ name: m.name, files: m.files })),
+		},
+	});
 
 	// ── Process outline children recursively ─────────────────────────────
 
@@ -854,6 +956,7 @@ export async function runHierarchyPipeline(
 		records,
 		edgeRecords,
 		resolvedItems,
+		logs,
 	);
 
 	// ── Handle orphan files ──────────────────────────────────────────────
@@ -870,17 +973,15 @@ export async function runHierarchyPipeline(
 		(f) => !assignedFiles.has(f.name),
 	);
 	if (orphanFiles.length > 0) {
-		console.log(
-			`[hierarchy] ${orphanFiles.length} orphan file(s), classifying...`,
-		);
+		plog(logs, "orphans", `${orphanFiles.length} orphan file(s): ${orphanFiles.map((f) => f.name).join(", ")}`, {
+			data: { orphanFileNames: orphanFiles.map((f) => f.name) },
+		});
 		try {
 			const orphanResult = await decomposeChildren(
 				outline.organism.name,
 				"Unassigned files from the organism",
 				orphanFiles,
-			);
-			console.log(
-				`[hierarchy] Orphans classified: ${orphanResult.sub_organisms.length} sub_organisms, ${orphanResult.molecules.length} molecules`,
+				logs,
 			);
 
 			await processChildren(
@@ -892,11 +993,23 @@ export async function runHierarchyPipeline(
 				records,
 				edgeRecords,
 				resolvedItems,
+				logs,
 			);
 		} catch (err) {
-			console.error("[hierarchy] Orphan classification failed:", err);
+			plog(logs, "error", `Orphan classification failed: ${err}`);
 		}
+	} else {
+		plog(logs, "orphans", `No orphan files — all assigned by outline`);
 	}
 
-	return { items: records, edges: edgeRecords };
+	plog(logs, "pipeline", `Pipeline complete: ${records.length} pieces resolved, ${edgeRecords.length} edges created`, {
+		data: {
+			totalPieces: records.length,
+			totalEdges: edgeRecords.length,
+			created: records.filter((r) => r.action === "created").length,
+			reused: records.filter((r) => r.action === "reused").length,
+		},
+	});
+
+	return { items: records, edges: edgeRecords, logs };
 }

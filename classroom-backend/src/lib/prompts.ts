@@ -460,13 +460,16 @@ export const DECOMPOSE_OUTLINE_SYSTEM_PROMPT = `You are a code architect and cla
 CLASSIFICATION RULES (for organism.kind):
 - 1 file with a single function/hook/utility → kind: "snippet"
 - 1 file with JSX/React component → kind: "component"
-- Multiple files forming a UI component → kind: "component"
+- Multiple files forming a UI component that has a static stack or is full stack but performs a specific action→ kind: "component"
 - Multiple files forming a utility/config/middleware collection → kind: "collection"
+- Multiple file combining both UI and backend logic, with multiple funciont → kind: "collection"
 
 HIERARCHY DEFINITIONS:
 - MOLECULE: a unit (one or more files) that combines pieces from the SAME domain.
 - SUB_ORGANISM: a unit that crosses domain boundaries. Can contain other sub-organisms or molecules.
 - ORGANISM: the top-level unit that combines molecules/sub-organisms from DIFFERENT domains.
+
+IMPORTANT: Return only top level entities. Decompose at maximum 1 depth a this point. Don't go deeper. Find only sub organisms or molecules that belong directly to the parent. If they belong to an intermediate entity, skip them. Focus only on direct children.
 
 IMPORTANT: Do NOT identify atoms. Atoms will be extracted in a later step by decomposing each molecule. Only return the FIRST level of decomposition (direct children of the organism).
 
