@@ -501,7 +501,7 @@ router.get("/:id", async (req: express.Request, res: express.Response) => {
           description: items.description,
         })
         .from(items)
-        .where(eq(items.id, parentEdge[0].sourceId));
+        .where(eq(items.id, parentEdge[0]!.sourceId));
       familyParent = p || null;
     }
 
