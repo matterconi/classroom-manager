@@ -10,7 +10,7 @@ import {
   getTableColumns,
 } from "drizzle-orm";
 import { db } from "../index.js";
-import { items, itemFiles, categories, edges } from "../schema/index.js";
+import { items, itemFiles, categories, edges, treeNodes } from "../schema/index.js";
 import { generateEmbedding } from "../../lib/embeddings.js";
 import { rerankCandidates, type ScoringFields } from "../../lib/scoring.js";
 import type { JudgeCandidateInput } from "../../lib/prompts.js";
@@ -515,8 +515,37 @@ router.get("/:id", async (req: express.Request, res: express.Response) => {
         .orderBy(asc(itemFiles.order));
     }
 
+    // Fetch semantic family node (if linked)
+    let semanticFamily: any = null;
+    if (record.semanticNodeId) {
+      const [node] = await db
+        .select()
+        .from(treeNodes)
+        .where(eq(treeNodes.id, record.semanticNodeId));
+      if (node) {
+        // Also fetch siblings (other items in same family)
+        const siblings = await db
+          .select({
+            id: items.id,
+            name: items.name,
+            kind: items.kind,
+            slug: items.slug,
+            description: items.description,
+          })
+          .from(items)
+          .where(
+            and(
+              eq(items.semanticNodeId, record.semanticNodeId),
+              sql`${items.id} != ${id}`,
+            ),
+          )
+          .orderBy(items.name);
+        semanticFamily = { ...node, siblings };
+      }
+    }
+
     res.status(200).json({
-      data: { ...record, children, expansions: expansionEdges, belongsTo, parts, familyParent, files },
+      data: { ...record, children, expansions: expansionEdges, belongsTo, parts, familyParent, semanticFamily, files },
     });
   } catch (e) {
     console.error(e);

@@ -16,7 +16,7 @@
 
 import { eq, and, sql } from "drizzle-orm";
 import { db } from "../db/index.js";
-import { items, edges } from "../db/schema/index.js";
+import { items, edges, treeNodes } from "../db/schema/index.js";
 import type { ItemKind } from "../db/schema/app.js";
 import { generateJSON } from "./deepseek.js";
 import { generateEmbedding } from "./embeddings.js";
@@ -37,6 +37,20 @@ import {
 
 type FileInput = { name: string; code: string; language?: string | undefined };
 
+type PieceMetadata = {
+	type?: string | null;
+	domain?: string | null;
+	stack?: string | null;
+	language?: string | null;
+	libraries?: string[] | null;
+	tags?: string[] | null;
+};
+
+type OrganismFile = {
+	name: string;
+	is_significant: boolean;
+};
+
 export type OutlineOrganism = {
 	name: string;
 	description: string;
@@ -51,7 +65,7 @@ export type OutlineOrganism = {
 	useCases: { title: string; use: string }[] | null;
 	entryFile: string | null;
 	is_demoable: boolean;
-	files: string[];
+	files: OrganismFile[];
 };
 
 type OutlinePiece = {
@@ -60,6 +74,8 @@ type OutlinePiece = {
 	is_demoable: boolean;
 	files: string[];
 	parent?: string | undefined;
+	metadata?: PieceMetadata;
+	// Legacy flat fields (backward compat with outline prompt)
 	type?: string | null;
 	domain?: string | null;
 	stack?: string | null;
@@ -84,12 +100,25 @@ type DetailAtom = {
 	description: string;
 	code: string;
 	is_demoable: boolean;
+	quality_rationale?: string;
+	metadata?: PieceMetadata;
+	// Legacy flat fields (backward compat)
 	type?: string | null;
 	domain?: string | null;
 	stack?: string | null;
 	language?: string | null;
 	libraries?: string[] | null;
 	tags?: string[] | null;
+};
+
+type SkippedAtom = {
+	name: string;
+	reason: string;
+};
+
+type ExtractAtomsResult = {
+	atoms: DetailAtom[];
+	skipped: SkippedAtom[];
 };
 
 type PieceToResolve = {
@@ -99,6 +128,7 @@ type PieceToResolve = {
 	is_demoable: boolean;
 	files: string[];
 	parent?: string | undefined;
+	metadata?: PieceMetadata | undefined;
 	type?: string | null | undefined;
 	domain?: string | null | undefined;
 	stack?: string | null | undefined;
@@ -268,17 +298,22 @@ async function extractAtoms(
 	moleculeFiles: FileInput[],
 	logs: LogEntry[],
 	meta?: { types?: string[]; domains?: string[]; tags?: string[] },
-): Promise<DetailAtom[]> {
+): Promise<ExtractAtomsResult> {
 	plog(logs, "extract-atoms", `Extracting atoms from "${moleculeName}" (${moleculeFiles.length} files)`, { item: moleculeName });
-	const result = await generateJSON<{ atoms: DetailAtom[] }>(
+	const result = await generateJSON<ExtractAtomsResult>(
 		DECOMPOSE_DETAIL_SYSTEM_PROMPT,
 		buildDetailUserPrompt(moleculeName, moleculeFiles, meta),
 	);
-	plog(logs, "extract-atoms", `Found ${result.atoms.length} atoms: ${result.atoms.map((a) => a.name).join(", ")}`, {
+	// Normalize: ensure skipped array exists
+	if (!result.skipped) result.skipped = [];
+	plog(logs, "extract-atoms", `Found ${result.atoms.length} atoms, skipped ${result.skipped.length}: ${result.atoms.map((a) => a.name).join(", ")}`, {
 		item: moleculeName,
-		data: result.atoms.map((a) => ({ name: a.name, is_demoable: a.is_demoable })),
+		data: {
+			kept: result.atoms.map((a) => ({ name: a.name, is_demoable: a.is_demoable, rationale: a.quality_rationale })),
+			skipped: result.skipped,
+		},
 	});
-	return result.atoms;
+	return result;
 }
 
 // ── Phase 2: Auto-reuse ──────────────────────────────────────────────────────
@@ -585,6 +620,30 @@ async function resolveItem(
 			const best = judgeResult.matches[0]!;
 
 			if (best.verdict === "parent_of") {
+				// The new piece is more abstract — create a tree_node as semantic parent
+				const embeddingText = [piece.name, piece.description].filter(Boolean).join(" ");
+				const nodeEmbedding = autoReuse.embedding || embedding || await generateEmbedding(embeddingText);
+				const nodeMeta: Record<string, unknown> = {};
+				const metaType = piece.metadata?.type || piece.type;
+				const metaDomain = piece.metadata?.domain || piece.domain;
+				const metaStack = piece.metadata?.stack || piece.stack;
+				const metaLang = piece.metadata?.language || piece.language;
+				if (metaType) nodeMeta.type = metaType;
+				if (metaDomain) nodeMeta.domain = metaDomain;
+				if (metaStack) nodeMeta.stack = metaStack;
+				if (metaLang) nodeMeta.language = metaLang;
+				const [newNode] = await db.insert(treeNodes).values({
+					name: piece.name,
+					description: piece.description,
+					code: piece.code || null,
+					embedding: nodeEmbedding,
+					metadata: nodeMeta,
+				}).returning();
+				// Link the candidate to this new semantic family
+				await db.update(items)
+					.set({ semanticNodeId: newNode!.id })
+					.where(eq(items.id, best.candidateId));
+				plog(logs, "semantic", `Created semantic node #${newNode!.id} "${piece.name}" as parent of item #${best.candidateId}`, { item: piece.name });
 				plog(logs, "resolve", `RESULT: REUSED (parent_of) → item #${best.candidateId} (confidence: ${best.confidence})`, { level, item: piece.name });
 				return {
 					itemId: best.candidateId,
@@ -609,6 +668,17 @@ async function resolveItem(
 						relationship: "variant",
 					},
 				});
+				// If matched item belongs to a semantic family, join it
+				const [matched] = await db
+					.select({ semanticNodeId: items.semanticNodeId })
+					.from(items)
+					.where(eq(items.id, best.candidateId));
+				if (matched?.semanticNodeId) {
+					await db.update(items)
+						.set({ semanticNodeId: matched.semanticNodeId })
+						.where(eq(items.id, itemId));
+					plog(logs, "semantic", `Joined semantic family node #${matched.semanticNodeId} (variant of #${best.candidateId})`, { item: piece.name });
+				}
 				plog(logs, "edge", `Created expansion edge: item #${itemId} → #${best.candidateId} (variant)`, {
 					item: piece.name,
 					data: { sourceId: itemId, targetId: best.candidateId, type: "expansion" },
@@ -670,6 +740,10 @@ async function createItem(
 ): Promise<number> {
 	const slug = slugify(piece.name) + "-" + Date.now();
 
+	// Resolve libraries/tags from metadata or flat fields (backward compat)
+	const libs = piece.libraries || piece.metadata?.libraries || null;
+	const tags = piece.tags || piece.metadata?.tags || null;
+
 	const [created] = await db
 		.insert(items)
 		.values({
@@ -678,12 +752,10 @@ async function createItem(
 			slug,
 			code: piece.code || null,
 			description: piece.description,
-			type: piece.type || null,
-			domain: piece.domain || null,
-			stack: piece.stack || null,
-			language: piece.language || null,
-			libraries: piece.libraries || null,
-			tags: piece.tags || null,
+			// AIA classification fields (type, domain, stack, language) NOT written to items.
+			// They live in tree_nodes.metadata for semantic families.
+			libraries: libs,
+			tags,
 			categoryId: categoryId || null,
 		})
 		.returning();
@@ -783,6 +855,7 @@ async function processChildren(
 	parentName: string,
 	parentItemId: number,
 	sourceFiles: FileInput[],
+	significantFiles: Set<string>,
 	records: PieceRecord[],
 	edgeRecords: EdgeRecord[],
 	resolvedItems: Map<string, number>,
@@ -852,6 +925,7 @@ async function processChildren(
 						subOrg.name,
 						result.itemId,
 						subFiles,
+						significantFiles,
 						records,
 						edgeRecords,
 						resolvedItems,
@@ -906,19 +980,24 @@ async function processChildren(
 			// If created → extract atoms
 			if (result.action === "created") {
 				const molFiles = sourceFiles.filter((f) =>
-					molecule.files.includes(f.name),
+					molecule.files.includes(f.name) && significantFiles.has(f.name),
 				);
 				if (molFiles.length > 0) {
 					try {
-						const atoms = await extractAtoms(
+						const extractResult = await extractAtoms(
 							molecule.name,
 							molFiles,
 							logs,
 							meta,
 						);
 
-						// Resolve each atom
-						for (const atom of atoms) {
+						// Log skipped atoms
+						for (const skipped of extractResult.skipped) {
+							plog(logs, "filter", `Skipped atom "${skipped.name}": ${skipped.reason}`, { item: skipped.name });
+						}
+
+						// Resolve each kept atom
+						for (const atom of extractResult.atoms) {
 							const atomPiece: PieceToResolve = {
 								name: atom.name,
 								description: atom.description,
@@ -926,12 +1005,9 @@ async function processChildren(
 								is_demoable: atom.is_demoable,
 								files: [],
 								parent: molecule.name,
-								type: atom.type,
-								domain: atom.domain,
-								stack: atom.stack,
-								language: atom.language,
-								libraries: atom.libraries,
-								tags: atom.tags,
+								metadata: atom.metadata,
+								libraries: atom.libraries || atom.metadata?.libraries,
+								tags: atom.tags || atom.metadata?.tags,
 							};
 							const atomContext = `Atom of "${molecule.name}"`;
 
@@ -1017,6 +1093,20 @@ export async function runHierarchyPipeline(
 
 	resolvedItems.set(outline.organism.name, organismItemId);
 
+	// Build set of significant file names from outline
+	const significantFiles = new Set<string>();
+	for (const f of outline.organism.files) {
+		if (typeof f === "string") {
+			significantFiles.add(f); // Legacy format: all files significant
+		} else if (f.is_significant) {
+			significantFiles.add(f.name);
+		}
+	}
+	if (significantFiles.size === 0) {
+		// Fallback: treat all files as significant
+		for (const f of sourceFiles) significantFiles.add(f.name);
+	}
+
 	plog(logs, "pipeline", `Starting hierarchy pipeline for organism #${organismItemId} "${outline.organism.name}"`, {
 		data: {
 			organismItemId,
@@ -1037,6 +1127,7 @@ export async function runHierarchyPipeline(
 		outline.organism.name,
 		organismItemId,
 		sourceFiles,
+		significantFiles,
 		records,
 		edgeRecords,
 		resolvedItems,
@@ -1078,6 +1169,7 @@ export async function runHierarchyPipeline(
 				outline.organism.name,
 				organismItemId,
 				orphanFiles,
+				significantFiles,
 				records,
 				edgeRecords,
 				resolvedItems,

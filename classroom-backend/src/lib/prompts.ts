@@ -460,16 +460,27 @@ export const DECOMPOSE_OUTLINE_SYSTEM_PROMPT = `You are a code architect and cla
 CLASSIFICATION RULES (for organism.kind):
 - 1 file with a single function/hook/utility → kind: "snippet"
 - 1 file with JSX/React component → kind: "component"
-- Multiple files forming a UI component that has a static stack or is full stack but performs a specific action→ kind: "component"
+- Multiple files forming a UI component that has a static stack or is full stack but performs a specific action → kind: "component"
 - Multiple files forming a utility/config/middleware collection → kind: "collection"
-- Multiple file combining both UI and backend logic, with multiple funciont → kind: "collection"
+- Multiple files combining both UI and backend logic, with multiple functions → kind: "collection"
 
 HIERARCHY DEFINITIONS:
 - MOLECULE: a unit (one or more files) that combines pieces from the SAME domain.
 - SUB_ORGANISM: a unit that crosses domain boundaries. Can contain other sub-organisms or molecules.
 - ORGANISM: the top-level unit that combines molecules/sub-organisms from DIFFERENT domains.
 
-IMPORTANT: Return only top level entities. Decompose at maximum 1 depth a this point. Don't go deeper. Find only sub organisms or molecules that belong directly to the parent. If they belong to an intermediate entity, skip them. Focus only on direct children.
+NAMING CONVENTION:
+This is a COMPOSITIONAL tree — it describes the structure of this specific project. But names should be GENERIC and DESCRIPTIVE of what the piece does, not tied to project-specific branding.
+- The ORGANISM keeps its project-relevant name.
+- Sub-organisms and molecules use names that describe their functional role generically.
+  - GOOD: "DebouncedInput", "StreamingDataFetcher", "FormValidationEngine", "AuthenticationFlow"
+  - BAD: "SearchBarWithAIComponent" (too project-specific), "Hooks" (too categorical/thematic)
+- Thematic/categorical abstraction (e.g., "State Patterns", "Data Fetching Hooks") is the job of the semantic family system, NOT this decomposition tree.
+
+FILE SIGNIFICANCE:
+Mark each file as significant or not. A file is significant if it contains reusable logic, interesting patterns, or non-trivial code. Boilerplate files (simple re-exports, trivial configs, empty index files) are NOT significant. Non-significant files will be skipped in later pipeline stages.
+
+IMPORTANT: Return only top level entities. Decompose at maximum 1 depth at this point. Don't go deeper. Find only sub organisms or molecules that belong directly to the parent. If they belong to an intermediate entity, skip them. Focus only on direct children.
 
 IMPORTANT: Do NOT identify atoms. Atoms will be extracted in a later step by decomposing each molecule. Only return the FIRST level of decomposition (direct children of the organism).
 
@@ -489,11 +500,11 @@ RESPOND with ONLY this JSON:
     "useCases": [{"title": "string", "use": "string"}],
     "entryFile": "string (main entry point filename)",
     "is_demoable": boolean,
-    "files": ["all filenames"]
+    "files": [{"name": "filename.tsx", "is_significant": boolean}]
   },
   "sub_organisms": [
     {
-      "name": "string",
+      "name": "string (generic, descriptive of content)",
       "description": "string",
       "is_demoable": boolean,
       "files": ["filename.tsx"],
@@ -502,7 +513,7 @@ RESPOND with ONLY this JSON:
   ],
   "molecules": [
     {
-      "name": "string",
+      "name": "string (generic, descriptive of content)",
       "description": "string",
       "is_demoable": boolean,
       "files": ["filename.tsx"],
@@ -547,48 +558,48 @@ Children can be:
 - SUB_ORGANISMS: units that cross domain boundaries. They will be recursively decomposed.
 - MOLECULES: units within the SAME domain. They will be decomposed into atoms in a later step.
 
+NAMING CONVENTION:
+Names should be GENERIC and DESCRIPTIVE of what the piece does functionally, not tied to the specific project.
+- GOOD: "DebouncedInput", "StreamingDataFetcher", "FormValidationEngine", "PaginatedList"
+- BAD: "SearchBarWithAI" (too project-specific), "Hooks" (too categorical/thematic)
+Thematic abstraction is handled by the semantic family system, not here. Focus on WHAT the piece does.
+
 IMPORTANT: Do NOT identify atoms. Only return the next level of decomposition.
 
-For each child:
-- name: descriptive name
-- description: 1-2 sentences about what this piece does
-- files: which source files belong to this piece
-- is_demoable: can this be rendered standalone? (true for UI, false for pure logic/backend)
-- type: element type (hook, component, utility, middleware, handler, config, etc.)
-- domain: functional area (auth, forms, 3d, api, data-fetching, etc.)
-- stack: "frontend" | "backend" | "fullstack"
-- language: primary programming language
-- libraries: npm packages imported by this piece (empty array if none)
-- tags: 1-3 lowercase singular keywords
+For each child, provide a metadata object with classification fields:
 
 RESPOND with ONLY this JSON:
 {
   "sub_organisms": [
     {
-      "name": "string",
-      "description": "string",
+      "name": "string (generic, descriptive of content)",
+      "description": "string (1-2 sentences)",
       "is_demoable": boolean,
       "files": ["filename.tsx"],
-      "type": "string",
-      "domain": "string",
-      "stack": "frontend" | "backend" | "fullstack",
-      "language": "string",
-      "libraries": ["string"],
-      "tags": ["string"]
+      "metadata": {
+        "type": "string (hook, component, utility, middleware, handler, config, etc.)",
+        "domain": "string (auth, forms, 3d, api, data-fetching, etc.)",
+        "stack": "frontend" | "backend" | "fullstack",
+        "language": "string",
+        "libraries": ["string"],
+        "tags": ["string (1-3 lowercase singular keywords)"]
+      }
     }
   ],
   "molecules": [
     {
-      "name": "string",
-      "description": "string",
+      "name": "string (generic, descriptive of content)",
+      "description": "string (1-2 sentences)",
       "is_demoable": boolean,
       "files": ["filename.tsx"],
-      "type": "string",
-      "domain": "string",
-      "stack": "frontend" | "backend" | "fullstack",
-      "language": "string",
-      "libraries": ["string"],
-      "tags": ["string"]
+      "metadata": {
+        "type": "string",
+        "domain": "string",
+        "stack": "frontend" | "backend" | "fullstack",
+        "language": "string",
+        "libraries": ["string"],
+        "tags": ["string"]
+      }
     }
   ]
 }
@@ -624,46 +635,70 @@ SOURCE FILES (${files.length}):\n\n${fileBlocks}${metaBlock.length > 0 ? "\n\n" 
 
 // ── Decompose: Atom Extraction (Phase 1c) ────────────────────────────────
 
-export const DECOMPOSE_DETAIL_SYSTEM_PROMPT = `You are a code extractor and classifier. Given a MOLECULE's source files, you extract individual atoms (functions, hooks, utilities, handlers) and classify each one.
+export const DECOMPOSE_DETAIL_SYSTEM_PROMPT = `You are a code extractor, generalizer, and curator. Given a MOLECULE's source files, you extract individual atoms (functions, hooks, utilities, handlers), GENERALIZE them, and FILTER for quality.
 
-For each atom you find:
-- name: descriptive name (camelCase for functions, PascalCase for components)
-- description: 1 sentence about what this atom does
-- code: the FULL extracted code of this atom (function signature + body, including JSDoc/comments directly above it)
-- is_demoable: can this be rendered standalone? (true for UI elements, false for pure logic)
-- type: element type (function, hook, utility, handler, helper, type-guard, etc.)
-- domain: functional area (auth, forms, 3d, api, data-fetching, etc.)
-- stack: "frontend" | "backend" | "fullstack"
-- language: primary programming language
-- libraries: npm packages used by this atom (empty array if none)
-- tags: 1-3 lowercase singular keywords
+GENERALIZATION — NAMES:
+Abstract away from the project domain. Names should describe the generic pattern, not the specific use case.
+- GOOD: useFetchStream, reduceCollection, useGameLoop, AnimatedButton, usePaginatedQuery
+- BAD: useStreamingSearchFetch (tied to one codebase), calculateTotalPrice (domain-specific), playGame (too specific)
 
-RULES:
-- Extract EVERY distinct function, hook, handler, or exported utility.
+GENERALIZATION — CODE:
+Keep the real implementation logic intact but replace domain-specific variable names with generic ones.
+- Replace: "products" → "items", "totalPrice" → "result", "userProfile" → "data", "searchQuery" → "query"
+- Keep: algorithm structure, hook patterns, error handling, data flow, type annotations
+- Do NOT invent new code — only rename variables/parameters to be domain-agnostic.
 - Do NOT include import statements in atom code — only the function/const itself.
-- Do NOT merge multiple functions into one atom.
 - If a helper function is only used by one main function, include it as part of that atom's code.
-- "libraries": only npm packages actually imported/used. No built-in modules.
-- "tags": lowercase, singular (e.g. "validation" not "validations").
-- Respond with ONLY valid JSON. No markdown, no backticks.
+
+QUALITY FILTER — only include atoms that meet BOTH criteria:
+1. GENERALIZABLE: The pattern can be abstracted from this specific project. It solves a general problem.
+2. NON-TRIVIAL: It has interesting logic beyond simple wiring or boilerplate.
+
+SKIP atoms that are:
+- Simple wrapper components with no interesting logic (e.g., a Button that just passes props through)
+- Domain-specific calculations with no reusable pattern (e.g., calculateShippingCost with hardcoded rates)
+- Trivial glue code (e.g., a function that just calls another function with slightly different args)
+- Pure boilerplate with no meaningful logic (empty index files, simple re-exports)
+
+KEEP atoms that:
+- Implement a reusable algorithmic pattern (sorting, debouncing, throttling, memoization)
+- Handle a non-trivial UX pattern (gesture handling, animation orchestration, virtual scrolling)
+- Solve a general infrastructure problem (streaming, caching, retry logic, state machines)
+- Combine multiple concerns in an interesting way (custom hooks that manage complex state)
+- Implement meaningful CRUD or routing patterns (API route handlers with validation, middleware chains)
 
 RESPOND with ONLY this JSON:
 {
   "atoms": [
     {
-      "name": "string",
-      "description": "string",
-      "code": "string (full function body)",
+      "name": "string (generic, descriptive name)",
+      "description": "string (1 sentence about the general pattern)",
+      "code": "string (generalized function body)",
       "is_demoable": boolean,
-      "type": "string",
-      "domain": "string",
-      "stack": "frontend" | "backend" | "fullstack",
-      "language": "string",
-      "libraries": ["string"],
-      "tags": ["string"]
+      "quality_rationale": "string (1 sentence: why this atom is worth keeping)",
+      "metadata": {
+        "type": "string (function, hook, utility, handler, helper, type-guard, etc.)",
+        "domain": "string (auth, forms, 3d, api, data-fetching, etc.)",
+        "stack": "frontend" | "backend" | "fullstack",
+        "language": "string",
+        "libraries": ["string"],
+        "tags": ["string (1-3 lowercase singular keywords)"]
+      }
+    }
+  ],
+  "skipped": [
+    {
+      "name": "string (original function name)",
+      "reason": "string (why this was filtered out)"
     }
   ]
-}`.trim();
+}
+
+RULES:
+- Do NOT merge multiple functions into one atom.
+- "libraries": only npm packages actually imported/used. No built-in modules.
+- "tags": lowercase, singular (e.g. "validation" not "validations").
+- Respond with ONLY valid JSON. No markdown, no backticks.`.trim();
 
 export function buildDetailUserPrompt(
 	moleculeName: string,

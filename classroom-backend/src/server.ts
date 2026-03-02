@@ -9,6 +9,7 @@ import userRouter from "./db/routes/users.js";
 import aiRouter from './db/routes/ai.js'
 import searchRouter from './db/routes/search.js'
 import demoRouter from './db/routes/demos.js'
+import treeNodeRouter from './db/routes/tree-nodes.js'
 import securityMiddleware from "./middleware/security.js";
 
 const app = express();
@@ -33,6 +34,7 @@ app.use("/api/users", userRouter);
 app.use("/api/ai", aiRouter)
 app.use("/api/search", searchRouter)
 app.use("/api/demos", demoRouter)
+app.use("/api/tree-nodes", treeNodeRouter)
 
 app.get("/", (_req: Request, res: Response) => {
   res.json({ message: "La Bottega UI — API" });

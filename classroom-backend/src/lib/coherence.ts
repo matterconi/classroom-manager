@@ -1,10 +1,13 @@
 // ── Coherence engine — Self-Organizing Knowledge Base ────────────────────────
 // Runs async after each insertion. Checks family health and triggers
 // split/merge/absorb with a bounded budget to prevent cascade.
+//
+// Semantic families live in tree_nodes. Items link to their family via
+// items.semantic_node_id. Parent edges are NOT used for families.
 
 import { eq, and, sql } from "drizzle-orm";
 import { db } from "../db/index.js";
-import { items, edges } from "../db/schema/index.js";
+import { items, treeNodes } from "../db/schema/index.js";
 import {
 	averagePairwiseSimilarity,
 	cosineSimilarity,
@@ -30,44 +33,33 @@ type FamilyMember = {
 };
 
 type Family = {
-	parent: FamilyMember & { isAbstract: boolean | null; lastCoherenceCheck: Date | null };
+	node: {
+		id: number;
+		name: string;
+		code: string | null;
+		description: string | null;
+		lastCoherenceCheck: Date | null;
+	};
 	children: FamilyMember[];
 };
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-/** Fetch a complete family: parent + all children via edges. */
-async function getFamily(parentId: number): Promise<Family | null> {
-	// Fetch parent
-	const [parentRow] = await db
+/** Fetch a complete family: tree_node + all items linked via semantic_node_id. */
+async function getFamily(nodeId: number): Promise<Family | null> {
+	const [node] = await db
 		.select({
-			id: items.id,
-			name: items.name,
-			code: items.code,
-			description: items.description,
-			embedding: items.embedding,
-			isAbstract: items.isAbstract,
-			lastCoherenceCheck: items.lastCoherenceCheck,
+			id: treeNodes.id,
+			name: treeNodes.name,
+			code: treeNodes.code,
+			description: treeNodes.description,
+			lastCoherenceCheck: treeNodes.lastCoherenceCheck,
 		})
-		.from(items)
-		.where(eq(items.id, parentId));
+		.from(treeNodes)
+		.where(eq(treeNodes.id, nodeId));
 
-	if (!parentRow || !parentRow.embedding) return null;
+	if (!node) return null;
 
-	// Fetch children via parent edges
-	const childEdges = await db
-		.select({ targetId: edges.targetId })
-		.from(edges)
-		.where(
-			and(
-				eq(edges.sourceId, parentId),
-				eq(edges.type, "parent"),
-			),
-		);
-
-	if (childEdges.length === 0) return null; // Not a parent
-
-	const childIds = childEdges.map((e) => e.targetId);
 	const childRows = await db
 		.select({
 			id: items.id,
@@ -77,14 +69,13 @@ async function getFamily(parentId: number): Promise<Family | null> {
 			embedding: items.embedding,
 		})
 		.from(items)
-		.where(sql`${items.id} IN (${sql.join(childIds.map(id => sql`${id}`), sql`, `)})`);
+		.where(eq(items.semanticNodeId, nodeId));
 
-	const children = childRows.filter((c) => c.embedding != null) as FamilyMember[];
+	const children = childRows.filter((c) => c.embedding != null && c.code != null) as FamilyMember[];
 
-	return {
-		parent: parentRow as Family["parent"],
-		children,
-	};
+	if (children.length === 0) return null;
+
+	return { node, children };
 }
 
 // ── COHERENCE CHECK (main entry point) ───────────────────────────────────────
@@ -93,25 +84,25 @@ async function getFamily(parentId: number): Promise<Family | null> {
  * Async coherence check for a family. Called fire-and-forget after insertions.
  * Budget-limited to prevent cascade.
  */
-export async function coherenceCheck(parentId: number): Promise<void> {
+export async function coherenceCheck(nodeId: number): Promise<void> {
 	try {
 		let budget = THRESHOLDS.COHERENCE_BUDGET;
 
-		const family = await getFamily(parentId);
+		const family = await getFamily(nodeId);
 		if (!family) return;
 
-		// Guard: cooldown (skip if checked recently — within last 5 minutes as proxy)
-		if (family.parent.lastCoherenceCheck) {
+		// Guard: cooldown (skip if checked recently — within last 5 minutes)
+		if (family.node.lastCoherenceCheck) {
 			const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000);
-			if (family.parent.lastCoherenceCheck > fiveMinAgo) return;
+			if (family.node.lastCoherenceCheck > fiveMinAgo) return;
 		}
 
 		// Step 0: Recompute centroid from scratch (prevents drift)
 		const allEmbeddings = family.children.map((c) => c.embedding);
 		const trueCentroid = computeCentroid(allEmbeddings);
-		await db.update(items)
+		await db.update(treeNodes)
 			.set({ centroidEmbedding: trueCentroid })
-			.where(eq(items.id, parentId));
+			.where(eq(treeNodes.id, nodeId));
 
 		// Step 1: Check intra-family health
 		const avgSim = averagePairwiseSimilarity(allEmbeddings);
@@ -124,26 +115,26 @@ export async function coherenceCheck(parentId: number): Promise<void> {
 
 		// Step 3: Check for MERGE with nearby families
 		if (budget > 0 && trueCentroid.length > 0) {
-			const didMerge = await checkMerge(parentId, trueCentroid);
+			const didMerge = await checkMerge(nodeId, trueCentroid);
 			if (didMerge) budget--;
 		}
 
 		// Step 4: Check for nearby STANDALONES to absorb
 		if (budget > 0 && trueCentroid.length > 0) {
-			const didAbsorb = await checkAbsorb(parentId, trueCentroid, family);
+			const didAbsorb = await checkAbsorb(nodeId, trueCentroid, family);
 			if (didAbsorb) budget--;
 		}
 
-		// Step 5: PRUNE — if parent is abstract and has 0 children, delete it
-		await prune(parentId);
+		// Step 5: PRUNE — if node has 0 children, delete it
+		await prune(nodeId);
 
 		// Update cooldown
-		await db.update(items)
+		await db.update(treeNodes)
 			.set({ lastCoherenceCheck: new Date() })
-			.where(eq(items.id, parentId));
+			.where(eq(treeNodes.id, nodeId));
 
 	} catch (err) {
-		console.error(`[coherence] Error checking family ${parentId}:`, err);
+		console.error(`[coherence] Error checking family node ${nodeId}:`, err);
 	}
 }
 
@@ -184,72 +175,51 @@ async function splitFamily(family: Family): Promise<boolean> {
 			),
 		);
 
-		// Create the sub-parent item
-		const slug = parentData.name.toLowerCase().replace(/\s+/g, "-").replace(/[^\w-]/g, "") + "-" + Date.now();
+		// Create a new tree_node for the sub-family
 		const embeddingText = [parentData.name, parentData.description, parentData.type, parentData.domain].filter(Boolean).join(" ");
 		const embedding = await generateEmbedding(embeddingText);
 		const centroid = computeCentroid(groupB.map((i) => i.embedding));
 
-		const [newParent] = await db.insert(items).values({
-			kind: "snippet",
+		const nodeMeta: Record<string, unknown> = {};
+		if (parentData.type) nodeMeta.type = parentData.type;
+		if (parentData.domain) nodeMeta.domain = parentData.domain;
+		if (parentData.stack) nodeMeta.stack = parentData.stack;
+		if (parentData.language) nodeMeta.language = parentData.language;
+		if (parentData.libraries?.length) nodeMeta.libraries = parentData.libraries;
+		if (parentData.tags?.length) nodeMeta.tags = parentData.tags;
+		if (parentData.useCases?.length) nodeMeta.useCases = parentData.useCases;
+
+		const [newNode] = await db.insert(treeNodes).values({
+			parentNodeId: family.node.id,
 			name: parentData.name,
-			slug,
 			code: parentData.code,
 			description: parentData.description,
-			isAbstract: true,
 			embedding,
 			centroidEmbedding: centroid,
-			useCases: parentData.useCases || null,
-			type: parentData.type || null,
-			domain: parentData.domain || null,
-			stack: parentData.stack || null,
-			language: parentData.language || null,
-			libraries: parentData.libraries || null,
-			tags: parentData.tags || null,
+			metadata: nodeMeta,
 		}).returning();
 
-		// Make sub-parent a child of the original parent
-		await db.insert(edges).values({
-			sourceId: family.parent.id,
-			targetId: newParent!.id,
-			resource: "item",
-			type: "parent",
-		});
-
-		// Move group_b children from original parent to sub-parent
+		// Move group_b children to the new node
 		for (const child of groupB) {
-			await db.delete(edges).where(
-				and(
-					eq(edges.sourceId, family.parent.id),
-					eq(edges.targetId, child.id),
-					eq(edges.type, "parent"),
-				),
-			);
-			await db.insert(edges).values({
-				sourceId: newParent!.id,
-				targetId: child.id,
-				resource: "item",
-				type: "parent",
-			});
+			await db.update(items)
+				.set({ semanticNodeId: newNode!.id })
+				.where(eq(items.id, child.id));
 		}
 
-		// Update original parent's centroid (now only has group_a + sub-parent)
-		const remainingEmbeddings = [
-			...groupA.map((i) => i.embedding),
-			...(embedding ? [embedding] : []),
-		];
+		// Update original node's centroid (now only has group_a)
+		const remainingEmbeddings = groupA.map((i) => i.embedding);
 		if (remainingEmbeddings.length > 0) {
 			const newCentroid = computeCentroid(remainingEmbeddings);
-			await db.update(items)
+			await db.update(treeNodes)
 				.set({ centroidEmbedding: newCentroid })
-				.where(eq(items.id, family.parent.id));
+				.where(eq(treeNodes.id, family.node.id));
 		}
 
-		console.log(`[coherence] Split family ${family.parent.id}: created sub-parent ${newParent!.id} with ${groupB.length} children`);
+		console.log(`[coherence] Split family node ${family.node.id}: created sub-node ${newNode!.id} with ${groupB.length} children`);
 		return true;
 
 	} catch (err) {
-		console.error(`[coherence] Split failed for family ${family.parent.id}:`, err);
+		console.error(`[coherence] Split failed for family node ${family.node.id}:`, err);
 		return false;
 	}
 }
@@ -257,33 +227,31 @@ async function splitFamily(family: Family): Promise<boolean> {
 // ── MERGE ────────────────────────────────────────────────────────────────────
 
 async function checkMerge(
-	parentId: number,
+	nodeId: number,
 	centroid: number[],
 ): Promise<boolean> {
 	const vectorStr = `[${centroid.join(",")}]`;
 
-	// Find nearby parents by centroid similarity
-	const nearbyParents = await db
+	// Find nearby tree_nodes by centroid similarity
+	const nearbyNodes = await db
 		.select({
-			id: items.id,
-			centroidEmbedding: items.centroidEmbedding,
+			id: treeNodes.id,
+			centroidEmbedding: treeNodes.centroidEmbedding,
 		})
-		.from(items)
+		.from(treeNodes)
 		.where(
 			and(
-				sql`${items.centroidEmbedding} IS NOT NULL`,
-				sql`${items.id} != ${parentId}`,
-				sql`1 - (${items.centroidEmbedding} <=> ${vectorStr}::vector) > ${THRESHOLDS.MERGE}`,
-				// Must be a parent (has outgoing parent edges)
-				sql`EXISTS (SELECT 1 FROM edges WHERE edges.source_id = ${items.id} AND edges.type = 'parent')`,
+				sql`${treeNodes.centroidEmbedding} IS NOT NULL`,
+				sql`${treeNodes.id} != ${nodeId}`,
+				sql`1 - (${treeNodes.centroidEmbedding} <=> ${vectorStr}::vector) > ${THRESHOLDS.MERGE}`,
 			),
 		)
 		.limit(3);
 
-	for (const neighbor of nearbyParents) {
+	for (const neighbor of nearbyNodes) {
 		if (!neighbor.centroidEmbedding) continue;
 
-		const myFamily = await getFamily(parentId);
+		const myFamily = await getFamily(nodeId);
 		const theirFamily = await getFamily(neighbor.id);
 		if (!myFamily || !theirFamily) continue;
 
@@ -299,7 +267,7 @@ async function checkMerge(
 		const crossSim = crossCount > 0 ? crossSum / crossCount : 0;
 
 		if (crossSim > THRESHOLDS.MERGE) {
-			await mergeInto(parentId, neighbor.id);
+			await mergeInto(nodeId, neighbor.id);
 			return true;
 		}
 	}
@@ -309,11 +277,11 @@ async function checkMerge(
 
 /** Merge family B into family A (larger absorbs smaller). */
 async function mergeInto(
-	familyAId: number,
-	familyBId: number,
+	nodeAId: number,
+	nodeBId: number,
 ): Promise<void> {
-	const familyA = await getFamily(familyAId);
-	const familyB = await getFamily(familyBId);
+	const familyA = await getFamily(nodeAId);
+	const familyB = await getFamily(nodeBId);
 	if (!familyA || !familyB) return;
 
 	const [keeper, absorbed] = familyA.children.length >= familyB.children.length
@@ -322,38 +290,13 @@ async function mergeInto(
 
 	// Move all children of absorbed to keeper
 	for (const child of absorbed.children) {
-		await db.delete(edges).where(
-			and(
-				eq(edges.sourceId, absorbed.parent.id),
-				eq(edges.targetId, child.id),
-				eq(edges.type, "parent"),
-			),
-		);
-		await db.insert(edges).values({
-			sourceId: keeper.parent.id,
-			targetId: child.id,
-			resource: "item",
-			type: "parent",
-		});
+		await db.update(items)
+			.set({ semanticNodeId: keeper.node.id })
+			.where(eq(items.id, child.id));
 	}
 
-	// Handle absorbed parent
-	if (absorbed.parent.isAbstract) {
-		await db.delete(edges).where(
-			and(
-				eq(edges.targetId, absorbed.parent.id),
-				eq(edges.type, "parent"),
-			),
-		);
-		await db.delete(items).where(eq(items.id, absorbed.parent.id));
-	} else {
-		await db.insert(edges).values({
-			sourceId: keeper.parent.id,
-			targetId: absorbed.parent.id,
-			resource: "item",
-			type: "parent",
-		}).onConflictDoNothing();
-	}
+	// Delete absorbed node (it has no more children)
+	await db.delete(treeNodes).where(eq(treeNodes.id, absorbed.node.id));
 
 	// Update keeper centroid
 	const allEmbeddings = [
@@ -361,23 +304,23 @@ async function mergeInto(
 		...absorbed.children.map((c) => c.embedding),
 	];
 	const newCentroid = computeCentroid(allEmbeddings);
-	await db.update(items)
+	await db.update(treeNodes)
 		.set({ centroidEmbedding: newCentroid })
-		.where(eq(items.id, keeper.parent.id));
+		.where(eq(treeNodes.id, keeper.node.id));
 
-	console.log(`[coherence] Merged family ${absorbed.parent.id} into ${keeper.parent.id}`);
+	console.log(`[coherence] Merged family node ${absorbed.node.id} into ${keeper.node.id}`);
 }
 
 // ── ABSORB ───────────────────────────────────────────────────────────────────
 
 async function checkAbsorb(
-	parentId: number,
+	nodeId: number,
 	centroid: number[],
 	family: Family,
 ): Promise<boolean> {
 	const vectorStr = `[${centroid.join(",")}]`;
 
-	// Find nearby standalone items
+	// Find nearby standalone items (no semantic_node_id)
 	const nearbyStandalones = await db
 		.select({
 			id: items.id,
@@ -387,12 +330,8 @@ async function checkAbsorb(
 		.where(
 			and(
 				sql`${items.embedding} IS NOT NULL`,
-				sql`${items.id} != ${parentId}`,
+				sql`${items.semanticNodeId} IS NULL`,
 				sql`1 - (${items.embedding} <=> ${vectorStr}::vector) > ${THRESHOLDS.VARIANT}`,
-				// Must be standalone (no incoming parent edge)
-				sql`NOT EXISTS (SELECT 1 FROM edges WHERE edges.target_id = ${items.id} AND edges.type = 'parent')`,
-				// Must not be a parent (no outgoing parent edges)
-				sql`NOT EXISTS (SELECT 1 FROM edges WHERE edges.source_id = ${items.id} AND edges.type = 'parent')`,
 			),
 		)
 		.limit(5);
@@ -405,20 +344,17 @@ async function checkAbsorb(
 		const avgToFamily = sims.reduce((a, b) => a + b, 0) / sims.length;
 
 		if (avgToFamily >= THRESHOLDS.VARIANT) {
-			await db.insert(edges).values({
-				sourceId: parentId,
-				targetId: standalone.id,
-				resource: "item",
-				type: "parent",
-			}).onConflictDoNothing();
+			await db.update(items)
+				.set({ semanticNodeId: nodeId })
+				.where(eq(items.id, standalone.id));
 
 			const allEmbeddings = [...family.children.map((c) => c.embedding), standalone.embedding as number[]];
 			const newCentroid = computeCentroid(allEmbeddings);
-			await db.update(items)
+			await db.update(treeNodes)
 				.set({ centroidEmbedding: newCentroid })
-				.where(eq(items.id, parentId));
+				.where(eq(treeNodes.id, nodeId));
 
-			console.log(`[coherence] Absorbed standalone ${standalone.id} into family ${parentId}`);
+			console.log(`[coherence] Absorbed standalone ${standalone.id} into family node ${nodeId}`);
 			absorbed = true;
 		}
 	}
@@ -428,59 +364,36 @@ async function checkAbsorb(
 
 // ── PRUNE ────────────────────────────────────────────────────────────────────
 
-/** Remove abstract parents that have 0-1 children. */
-async function prune(parentId: number): Promise<void> {
+/** Remove tree_nodes that have 0-1 children. */
+async function prune(nodeId: number): Promise<void> {
 	const countResult = await db
 		.select({ count: sql<number>`count(*)` })
-		.from(edges)
-		.where(
-			and(
-				eq(edges.sourceId, parentId),
-				eq(edges.type, "parent"),
-			),
-		);
+		.from(items)
+		.where(eq(items.semanticNodeId, nodeId));
 
 	const childCount = Number(countResult[0]?.count ?? 0);
 
 	if (childCount <= 1) {
-		const [parent] = await db
-			.select({ isAbstract: items.isAbstract })
-			.from(items)
-			.where(eq(items.id, parentId));
-
-		if (parent?.isAbstract) {
-			if (childCount === 1) {
-				// Dissolve: make the lone child standalone
-				await db.delete(edges).where(
-					and(
-						eq(edges.sourceId, parentId),
-						eq(edges.type, "parent"),
-					),
-				);
-			}
-
-			// If parent itself is a child of another parent, remove that edge too
-			await db.delete(edges).where(
-				and(
-					eq(edges.targetId, parentId),
-					eq(edges.type, "parent"),
-				),
-			);
-
-			// Delete the abstract parent
-			await db.delete(items).where(eq(items.id, parentId));
-			console.log(`[coherence] Pruned abstract parent ${parentId} (had ${childCount} children)`);
+		// Unlink remaining child (if any)
+		if (childCount === 1) {
+			await db.update(items)
+				.set({ semanticNodeId: null })
+				.where(eq(items.semanticNodeId, nodeId));
 		}
+
+		// Delete the tree_node
+		await db.delete(treeNodes).where(eq(treeNodes.id, nodeId));
+		console.log(`[coherence] Pruned tree_node ${nodeId} (had ${childCount} children)`);
 	}
 }
 
 // ── Fire-and-forget wrapper ──────────────────────────────────────────────────
 
 /** Schedule a coherence check (non-blocking, fire-and-forget). */
-export function scheduleCoherenceCheck(parentId: number): void {
+export function scheduleCoherenceCheck(nodeId: number): void {
 	setImmediate(() => {
-		coherenceCheck(parentId).catch((err) => {
-			console.error(`[coherence] Async check failed for item ${parentId}:`, err);
+		coherenceCheck(nodeId).catch((err) => {
+			console.error(`[coherence] Async check failed for node ${nodeId}:`, err);
 		});
 	});
 }

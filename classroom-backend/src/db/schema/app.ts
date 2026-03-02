@@ -82,6 +82,7 @@ export const items = pgTable(
     variants: jsonb("variants").$type<{ prop: string; options: string[] }[]>(),
     entryFile: varchar("entry_file", { length: 255 }),
     isAbstract: boolean("is_abstract").default(false),
+    semanticNodeId: integer("semantic_node_id"),
     centroidEmbedding: vector("centroid_embedding", { dimensions: 1536 }),
     lastCoherenceCheck: timestamp("last_coherence_check"),
     embedding: vector("embedding", { dimensions: 1536 }),
@@ -90,6 +91,7 @@ export const items = pgTable(
   (table) => [
     index("items_kind_idx").on(table.kind),
     index("items_category_id_idx").on(table.categoryId),
+    index("idx_items_semantic_node").on(table.semanticNodeId),
   ],
 );
 
@@ -155,6 +157,35 @@ export const demoFiles = pgTable(
   (table) => [index("idx_demo_files_demo_id").on(table.demoId)],
 );
 
+// ── Tree Nodes (AIA semantic families) ────────────────────────────────────────
+
+export type TreeNodeMetadata = {
+  type?: string;
+  domain?: string;
+  stack?: string;
+  language?: string;
+  libraries?: string[];
+  tags?: string[];
+  useCases?: { title: string; use: string }[];
+};
+
+export const treeNodes = pgTable(
+  "tree_nodes",
+  {
+    id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+    parentNodeId: integer("parent_node_id"),
+    name: varchar("name", { length: 255 }).notNull(),
+    description: text("description"),
+    code: text("code"),
+    metadata: jsonb("metadata").$type<TreeNodeMetadata>().default({}),
+    embedding: vector("embedding", { dimensions: 1536 }),
+    centroidEmbedding: vector("centroid_embedding", { dimensions: 1536 }),
+    lastCoherenceCheck: timestamp("last_coherence_check"),
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (table) => [index("idx_tree_nodes_parent").on(table.parentNodeId)],
+);
+
 // ── Relations ──────────────────────────────────────────────────────────────────
 
 export const categoryRelations = relations(categories, ({ many }) => ({
@@ -166,6 +197,10 @@ export const itemRelations = relations(items, ({ one, many }) => ({
     fields: [items.categoryId],
     references: [categories.id],
   }),
+  semanticNode: one(treeNodes, {
+    fields: [items.semanticNodeId],
+    references: [treeNodes.id],
+  }),
   files: many(itemFiles),
 }));
 
@@ -174,6 +209,16 @@ export const itemFileRelations = relations(itemFiles, ({ one }) => ({
     fields: [itemFiles.itemId],
     references: [items.id],
   }),
+}));
+
+export const treeNodeRelations = relations(treeNodes, ({ one, many }) => ({
+  parentNode: one(treeNodes, {
+    fields: [treeNodes.parentNodeId],
+    references: [treeNodes.id],
+    relationName: "treeParent",
+  }),
+  childNodes: many(treeNodes, { relationName: "treeParent" }),
+  items: many(items),
 }));
 
 export const demoRelations = relations(demos, ({ one, many }) => ({
@@ -215,3 +260,6 @@ export type NewDemo = typeof demos.$inferInsert;
 
 export type DemoFile = typeof demoFiles.$inferSelect;
 export type NewDemoFile = typeof demoFiles.$inferInsert;
+
+export type TreeNode = typeof treeNodes.$inferSelect;
+export type NewTreeNode = typeof treeNodes.$inferInsert;
