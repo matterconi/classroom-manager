@@ -469,6 +469,7 @@ router.post("/", async (req: express.Request, res: express.Response) => {
 
     const autoMode = !kind && !name && files && Array.isArray(files) && files.length > 0;
     let outline: OutlineResult | null = null;
+    let meta: { types?: string[]; domains?: string[]; tags?: string[]; categories?: string[] } | undefined;
 
     if (autoMode) {
       // Validate files
@@ -491,7 +492,7 @@ router.post("/", async (req: express.Request, res: express.Response) => {
         db.select({ name: categories.name }).from(categories),
       ]);
 
-      const meta = {
+      meta = {
         types: typesRow.map((r) => r.value).filter(Boolean) as string[],
         domains: domainsRow.map((r) => r.value).filter(Boolean) as string[],
         tags: (tagsRow.rows as { value: string }[]).map((r) => r.value),
@@ -716,7 +717,7 @@ router.post("/", async (req: express.Request, res: express.Response) => {
     // Phase 1: Hierarchy (outline + detail extraction + AIA + belongs_to edges)
     let hierarchyResult: Awaited<ReturnType<typeof runHierarchyPipeline>> | null = null;
     try {
-      hierarchyResult = await runHierarchyPipeline(created.id, outline, sourceFiles);
+      hierarchyResult = await runHierarchyPipeline(created.id, outline, sourceFiles, meta, categoryId);
       console.log(`[ingest] Hierarchy: ${hierarchyResult.items.length} pieces resolved`);
     } catch (err) {
       console.error("[ingest] Hierarchy pipeline failed:", err);
@@ -841,8 +842,20 @@ router.post("/:id/decompose", async (req: express.Request, res: express.Response
       return;
     }
 
+    // Fetch existing meta for classification consistency
+    const [typesRow, domainsRow, tagsRow] = await Promise.all([
+      db.selectDistinct({ value: items.type }).from(items).where(sql`${items.type} IS NOT NULL`),
+      db.selectDistinct({ value: items.domain }).from(items).where(sql`${items.domain} IS NOT NULL`),
+      db.execute(sql`SELECT DISTINCT t.value FROM items, jsonb_array_elements_text(tags) AS t(value) WHERE tags IS NOT NULL ORDER BY t.value`),
+    ]);
+    const decomposeMeta = {
+      types: typesRow.map((r) => r.value).filter(Boolean) as string[],
+      domains: domainsRow.map((r) => r.value).filter(Boolean) as string[],
+      tags: (tagsRow.rows as { value: string }[]).map((r) => r.value),
+    };
+
     const outline = await decomposeOutline(sourceFiles);
-    const result = await runHierarchyPipeline(itemId, outline, sourceFiles);
+    const result = await runHierarchyPipeline(itemId, outline, sourceFiles, decomposeMeta, item.categoryId);
 
     res.status(201).json({ data: result });
   } catch (e) {

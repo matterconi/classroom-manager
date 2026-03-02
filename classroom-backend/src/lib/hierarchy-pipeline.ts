@@ -60,6 +60,12 @@ type OutlinePiece = {
 	is_demoable: boolean;
 	files: string[];
 	parent?: string | undefined;
+	type?: string | null;
+	domain?: string | null;
+	stack?: string | null;
+	language?: string | null;
+	libraries?: string[] | null;
+	tags?: string[] | null;
 };
 
 export type OutlineResult = {
@@ -78,6 +84,12 @@ type DetailAtom = {
 	description: string;
 	code: string;
 	is_demoable: boolean;
+	type?: string | null;
+	domain?: string | null;
+	stack?: string | null;
+	language?: string | null;
+	libraries?: string[] | null;
+	tags?: string[] | null;
 };
 
 type PieceToResolve = {
@@ -87,6 +99,12 @@ type PieceToResolve = {
 	is_demoable: boolean;
 	files: string[];
 	parent?: string | undefined;
+	type?: string | null | undefined;
+	domain?: string | null | undefined;
+	stack?: string | null | undefined;
+	language?: string | null | undefined;
+	libraries?: string[] | null | undefined;
+	tags?: string[] | null | undefined;
 };
 
 type JudgeResponse = {
@@ -222,11 +240,12 @@ async function decomposeChildren(
 	parentDescription: string,
 	files: FileInput[],
 	logs: LogEntry[],
+	meta?: { types?: string[]; domains?: string[]; tags?: string[] },
 ): Promise<DecomposeChildrenResult> {
 	plog(logs, "decompose-children", `Decomposing "${parentName}" (${files.length} files)`, { item: parentName });
 	const result = await generateJSON<DecomposeChildrenResult>(
 		DECOMPOSE_CHILDREN_SYSTEM_PROMPT,
-		buildDecomposeChildrenUserPrompt(parentName, parentDescription, files),
+		buildDecomposeChildrenUserPrompt(parentName, parentDescription, files, meta),
 	);
 	plog(logs, "decompose-children", `Result: ${result.sub_organisms.length} sub_organisms, ${result.molecules.length} molecules`, {
 		item: parentName,
@@ -248,11 +267,12 @@ async function extractAtoms(
 	moleculeName: string,
 	moleculeFiles: FileInput[],
 	logs: LogEntry[],
+	meta?: { types?: string[]; domains?: string[]; tags?: string[] },
 ): Promise<DetailAtom[]> {
 	plog(logs, "extract-atoms", `Extracting atoms from "${moleculeName}" (${moleculeFiles.length} files)`, { item: moleculeName });
 	const result = await generateJSON<{ atoms: DetailAtom[] }>(
 		DECOMPOSE_DETAIL_SYSTEM_PROMPT,
-		buildDetailUserPrompt(moleculeName, moleculeFiles),
+		buildDetailUserPrompt(moleculeName, moleculeFiles, meta),
 	);
 	plog(logs, "extract-atoms", `Found ${result.atoms.length} atoms: ${result.atoms.map((a) => a.name).join(", ")}`, {
 		item: moleculeName,
@@ -502,6 +522,7 @@ async function resolveItem(
 	level: string,
 	context: string,
 	logs: LogEntry[],
+	categoryId?: number | null,
 ): Promise<ResolveResult> {
 	const kind = levelToKind(level);
 
@@ -574,7 +595,7 @@ async function resolveItem(
 			}
 
 			if (best.verdict === "variant") {
-				const itemId = await createItem(piece, kind, logs, autoReuse.embedding || embedding);
+				const itemId = await createItem(piece, kind, logs, autoReuse.embedding || embedding, categoryId);
 				await db.insert(edges).values({
 					sourceId: itemId,
 					targetId: best.candidateId,
@@ -602,7 +623,7 @@ async function resolveItem(
 			}
 
 			if (best.verdict === "expansion") {
-				const itemId = await createItem(piece, kind, logs, autoReuse.embedding || embedding);
+				const itemId = await createItem(piece, kind, logs, autoReuse.embedding || embedding, categoryId);
 				await db.insert(edges).values({
 					sourceId: itemId,
 					targetId: best.candidateId,
@@ -633,7 +654,7 @@ async function resolveItem(
 	}
 
 	// Cascade 3: No match — create new (reuse embedding)
-	const itemId = await createItem(piece, kind, logs, autoReuse.embedding || embedding);
+	const itemId = await createItem(piece, kind, logs, autoReuse.embedding || embedding, categoryId);
 	plog(logs, "resolve", `RESULT: CREATED (new, no match) → item #${itemId}`, { level, item: piece.name });
 	return { itemId, action: "created", verdict: null, matchedItemId: null };
 }
@@ -645,6 +666,7 @@ async function createItem(
 	kind: ItemKind,
 	logs: LogEntry[],
 	precomputedEmbedding?: number[],
+	categoryId?: number | null,
 ): Promise<number> {
 	const slug = slugify(piece.name) + "-" + Date.now();
 
@@ -656,6 +678,13 @@ async function createItem(
 			slug,
 			code: piece.code || null,
 			description: piece.description,
+			type: piece.type || null,
+			domain: piece.domain || null,
+			stack: piece.stack || null,
+			language: piece.language || null,
+			libraries: piece.libraries || null,
+			tags: piece.tags || null,
+			categoryId: categoryId || null,
 		})
 		.returning();
 
@@ -758,6 +787,8 @@ async function processChildren(
 	edgeRecords: EdgeRecord[],
 	resolvedItems: Map<string, number>,
 	logs: LogEntry[],
+	meta?: { types?: string[]; domains?: string[]; tags?: string[] },
+	categoryId?: number | null,
 ): Promise<void> {
 	plog(logs, "process", `Processing children of "${parentName}" (item #${parentItemId}): ${subOrganisms.length} sub_organisms, ${molecules.length} molecules`, {
 		item: parentName,
@@ -774,7 +805,7 @@ async function processChildren(
 		const context = `Sub-organism of "${parentName}"`;
 
 		try {
-			const result = await resolveItem(piece, "sub_organism", context, logs);
+			const result = await resolveItem(piece, "sub_organism", context, logs, categoryId);
 			resolvedItems.set(subOrg.name, result.itemId);
 
 			if (result.itemId !== parentItemId) {
@@ -811,6 +842,7 @@ async function processChildren(
 						subOrg.description,
 						subFiles,
 						logs,
+						meta,
 					);
 
 					// Recurse
@@ -824,6 +856,8 @@ async function processChildren(
 						edgeRecords,
 						resolvedItems,
 						logs,
+						meta,
+						categoryId,
 					);
 				} else {
 					plog(logs, "process", `No source files for sub_organism "${subOrg.name}" — skipping decompose`, { item: subOrg.name });
@@ -843,7 +877,7 @@ async function processChildren(
 		const context = `Molecule of "${parentName}"`;
 
 		try {
-			const result = await resolveItem(piece, "molecule", context, logs);
+			const result = await resolveItem(piece, "molecule", context, logs, categoryId);
 			resolvedItems.set(molecule.name, result.itemId);
 
 			if (result.itemId !== parentItemId) {
@@ -880,6 +914,7 @@ async function processChildren(
 							molecule.name,
 							molFiles,
 							logs,
+							meta,
 						);
 
 						// Resolve each atom
@@ -891,6 +926,12 @@ async function processChildren(
 								is_demoable: atom.is_demoable,
 								files: [],
 								parent: molecule.name,
+								type: atom.type,
+								domain: atom.domain,
+								stack: atom.stack,
+								language: atom.language,
+								libraries: atom.libraries,
+								tags: atom.tags,
 							};
 							const atomContext = `Atom of "${molecule.name}"`;
 
@@ -900,6 +941,7 @@ async function processChildren(
 									"atom",
 									atomContext,
 									logs,
+									categoryId,
 								);
 								resolvedItems.set(atom.name, atomResult.itemId);
 
@@ -965,6 +1007,8 @@ export async function runHierarchyPipeline(
 	organismItemId: number,
 	outline: OutlineResult,
 	sourceFiles: FileInput[],
+	meta?: { types?: string[]; domains?: string[]; tags?: string[] },
+	categoryId?: number | null,
 ): Promise<HierarchyResult> {
 	const records: PieceRecord[] = [];
 	const edgeRecords: EdgeRecord[] = [];
@@ -997,6 +1041,8 @@ export async function runHierarchyPipeline(
 		edgeRecords,
 		resolvedItems,
 		logs,
+		meta,
+		categoryId,
 	);
 
 	// ── Handle orphan files ──────────────────────────────────────────────
@@ -1023,6 +1069,7 @@ export async function runHierarchyPipeline(
 				"Unassigned files from the organism",
 				orphanFiles,
 				logs,
+				meta,
 			);
 
 			await processChildren(
@@ -1035,6 +1082,8 @@ export async function runHierarchyPipeline(
 				edgeRecords,
 				resolvedItems,
 				logs,
+				meta,
+				categoryId,
 			);
 		} catch (err) {
 			plog(logs, "error", `Orphan classification failed: ${err}`);

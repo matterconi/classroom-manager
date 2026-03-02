@@ -541,7 +541,7 @@ export function buildOutlineUserPrompt(
 
 // ── Decompose: Children (Phase 1b — sub_organism → sub_organisms/molecules) ──
 
-export const DECOMPOSE_CHILDREN_SYSTEM_PROMPT = `You are a code architect. Given a PARENT piece and its source files (full code), identify its DIRECT CHILDREN.
+export const DECOMPOSE_CHILDREN_SYSTEM_PROMPT = `You are a code architect and classifier. Given a PARENT piece and its source files (full code), identify its DIRECT CHILDREN and classify each one.
 
 Children can be:
 - SUB_ORGANISMS: units that cross domain boundaries. They will be recursively decomposed.
@@ -554,6 +554,12 @@ For each child:
 - description: 1-2 sentences about what this piece does
 - files: which source files belong to this piece
 - is_demoable: can this be rendered standalone? (true for UI, false for pure logic/backend)
+- type: element type (hook, component, utility, middleware, handler, config, etc.)
+- domain: functional area (auth, forms, 3d, api, data-fetching, etc.)
+- stack: "frontend" | "backend" | "fullstack"
+- language: primary programming language
+- libraries: npm packages imported by this piece (empty array if none)
+- tags: 1-3 lowercase singular keywords
 
 RESPOND with ONLY this JSON:
 {
@@ -562,7 +568,13 @@ RESPOND with ONLY this JSON:
       "name": "string",
       "description": "string",
       "is_demoable": boolean,
-      "files": ["filename.tsx"]
+      "files": ["filename.tsx"],
+      "type": "string",
+      "domain": "string",
+      "stack": "frontend" | "backend" | "fullstack",
+      "language": "string",
+      "libraries": ["string"],
+      "tags": ["string"]
     }
   ],
   "molecules": [
@@ -570,7 +582,13 @@ RESPOND with ONLY this JSON:
       "name": "string",
       "description": "string",
       "is_demoable": boolean,
-      "files": ["filename.tsx"]
+      "files": ["filename.tsx"],
+      "type": "string",
+      "domain": "string",
+      "stack": "frontend" | "backend" | "fullstack",
+      "language": "string",
+      "libraries": ["string"],
+      "tags": ["string"]
     }
   ]
 }
@@ -579,38 +597,54 @@ RULES:
 - Respond with ONLY valid JSON. No markdown, no backticks.
 - Every file must belong to at least one child.
 - Do NOT return atoms.
-- A single file with multiple functions → classify as a MOLECULE.`.trim();
+- A single file with multiple functions → classify as a MOLECULE.
+- "libraries": only npm packages actually imported. No built-in modules.
+- "tags": lowercase, singular (e.g. "animation" not "animations").`.trim();
 
 export function buildDecomposeChildrenUserPrompt(
 	parentName: string,
 	parentDescription: string,
 	files: { name: string; code: string }[],
+	meta?: { types?: string[]; domains?: string[]; tags?: string[] },
 ): string {
 	const fileBlocks = files
 		.map((f) => `--- ${f.name} ---\n${f.code}`)
 		.join("\n\n");
 
+	const metaBlock: string[] = [];
+	if (meta?.types?.length) metaBlock.push(`EXISTING TYPES: ${meta.types.join(", ")}. Prefer these if they fit.`);
+	if (meta?.domains?.length) metaBlock.push(`EXISTING DOMAINS: ${meta.domains.join(", ")}. Prefer these if they fit.`);
+	if (meta?.tags?.length) metaBlock.push(`EXISTING TAGS: ${meta.tags.join(", ")}. Prefer these if they fit.`);
+
 	return `PARENT: "${parentName}"
 Description: ${parentDescription}
 
-SOURCE FILES (${files.length}):\n\n${fileBlocks}\n\nDecompose into direct children (sub_organisms and/or molecules). Do NOT identify atoms.`;
+SOURCE FILES (${files.length}):\n\n${fileBlocks}${metaBlock.length > 0 ? "\n\n" + metaBlock.join("\n") : ""}\n\nDecompose into direct children (sub_organisms and/or molecules). Do NOT identify atoms. Classify each child.`;
 }
 
 // ── Decompose: Atom Extraction (Phase 1c) ────────────────────────────────
 
-export const DECOMPOSE_DETAIL_SYSTEM_PROMPT = `You are a code extractor. Given a MOLECULE's source files, you extract individual atoms (functions, hooks, utilities, handlers).
+export const DECOMPOSE_DETAIL_SYSTEM_PROMPT = `You are a code extractor and classifier. Given a MOLECULE's source files, you extract individual atoms (functions, hooks, utilities, handlers) and classify each one.
 
 For each atom you find:
 - name: descriptive name (camelCase for functions, PascalCase for components)
 - description: 1 sentence about what this atom does
 - code: the FULL extracted code of this atom (function signature + body, including JSDoc/comments directly above it)
 - is_demoable: can this be rendered standalone? (true for UI elements, false for pure logic)
+- type: element type (function, hook, utility, handler, helper, type-guard, etc.)
+- domain: functional area (auth, forms, 3d, api, data-fetching, etc.)
+- stack: "frontend" | "backend" | "fullstack"
+- language: primary programming language
+- libraries: npm packages used by this atom (empty array if none)
+- tags: 1-3 lowercase singular keywords
 
 RULES:
 - Extract EVERY distinct function, hook, handler, or exported utility.
 - Do NOT include import statements in atom code — only the function/const itself.
 - Do NOT merge multiple functions into one atom.
 - If a helper function is only used by one main function, include it as part of that atom's code.
+- "libraries": only npm packages actually imported/used. No built-in modules.
+- "tags": lowercase, singular (e.g. "validation" not "validations").
 - Respond with ONLY valid JSON. No markdown, no backticks.
 
 RESPOND with ONLY this JSON:
@@ -620,7 +654,13 @@ RESPOND with ONLY this JSON:
       "name": "string",
       "description": "string",
       "code": "string (full function body)",
-      "is_demoable": boolean
+      "is_demoable": boolean,
+      "type": "string",
+      "domain": "string",
+      "stack": "frontend" | "backend" | "fullstack",
+      "language": "string",
+      "libraries": ["string"],
+      "tags": ["string"]
     }
   ]
 }`.trim();
@@ -628,10 +668,16 @@ RESPOND with ONLY this JSON:
 export function buildDetailUserPrompt(
 	moleculeName: string,
 	files: { name: string; code: string }[],
+	meta?: { types?: string[]; domains?: string[]; tags?: string[] },
 ): string {
 	const fileBlocks = files
 		.map((f) => `--- ${f.name} ---\n${f.code}`)
 		.join("\n\n");
 
-	return `MOLECULE: "${moleculeName}"\n\nSOURCE FILES (${files.length}):\n\n${fileBlocks}\n\nExtract all atoms with their code.`;
+	const metaBlock: string[] = [];
+	if (meta?.types?.length) metaBlock.push(`EXISTING TYPES: ${meta.types.join(", ")}. Prefer these if they fit.`);
+	if (meta?.domains?.length) metaBlock.push(`EXISTING DOMAINS: ${meta.domains.join(", ")}. Prefer these if they fit.`);
+	if (meta?.tags?.length) metaBlock.push(`EXISTING TAGS: ${meta.tags.join(", ")}. Prefer these if they fit.`);
+
+	return `MOLECULE: "${moleculeName}"\n\nSOURCE FILES (${files.length}):\n\n${fileBlocks}${metaBlock.length > 0 ? "\n\n" + metaBlock.join("\n") : ""}\n\nExtract all atoms with their code and classify each one.`;
 }
