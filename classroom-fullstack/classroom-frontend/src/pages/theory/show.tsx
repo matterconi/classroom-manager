@@ -11,6 +11,7 @@ import { useState } from "react";
 
 import type { Theory } from "@/types";
 import { useShow } from "@refinedev/core";
+import { RelationshipsCard } from "@/components/relationships-card";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
 import { THEORY_TYPE_OPTIONS } from "@/constants";
@@ -117,6 +118,9 @@ const TheoryShow = () => {
           </CardContent>
         </Card>
       )}
+
+      {/* Relationships */}
+      <RelationshipsCard record={record} />
 
       {/* Source Code */}
       <Card className="mt-4">

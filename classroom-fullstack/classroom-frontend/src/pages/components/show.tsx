@@ -17,6 +17,7 @@ import { useState } from "react";
 
 import type { Component, ComponentFile, ComponentVariant } from "@/types";
 import { useShow } from "@refinedev/core";
+import { RelationshipsCard } from "@/components/relationships-card";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
 import {
@@ -167,6 +168,9 @@ const ComponentShow = () => {
           </CardContent>
         </Card>
       )}
+
+      {/* Relationships */}
+      <RelationshipsCard record={record} />
 
       {/* Tabs: Code | Files | Preview */}
       <Tabs defaultValue="files" className="mt-4">

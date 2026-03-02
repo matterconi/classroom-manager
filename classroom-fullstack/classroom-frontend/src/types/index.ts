@@ -77,6 +77,14 @@ export type ItemFile = {
   updatedAt?: string;
 };
 
+export type ItemSummary = {
+  id: number;
+  name: string;
+  kind: ItemKind;
+  slug: string;
+  description?: string;
+};
+
 export type Item = {
   id: number;
   kind: ItemKind;
@@ -98,6 +106,8 @@ export type Item = {
   category?: Category;
   children?: Item[];
   expansions?: Edge[];
+  belongsTo?: ItemSummary[];
+  familyParent?: ItemSummary;
   files?: ItemFile[];
   filesCount?: number;
   createdAt?: string;

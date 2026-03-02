@@ -424,6 +424,60 @@ router.get("/:id", async (req: express.Request, res: express.Response) => {
         ),
       );
 
+    // Fetch belongs_to edges (this item → parent groups)
+    const belongsToEdges = await db
+      .select({ targetId: edges.targetId })
+      .from(edges)
+      .where(
+        and(
+          eq(edges.sourceId, id),
+          eq(edges.type, "belongs_to"),
+        ),
+      );
+
+    let belongsTo: any[] = [];
+    if (belongsToEdges.length > 0) {
+      const btIds = belongsToEdges.map((e) => e.targetId);
+      belongsTo = await db
+        .select({
+          id: items.id,
+          name: items.name,
+          kind: items.kind,
+          slug: items.slug,
+          description: items.description,
+        })
+        .from(items)
+        .where(sql`${items.id} IN (${sql.join(btIds.map(bid => sql`${bid}`), sql`, `)})`)
+        .orderBy(items.name);
+    }
+
+    // Fetch family parent (parent → this item)
+    const parentEdge = await db
+      .select({ sourceId: edges.sourceId })
+      .from(edges)
+      .where(
+        and(
+          eq(edges.targetId, id),
+          eq(edges.type, "parent"),
+        ),
+      )
+      .limit(1);
+
+    let familyParent: any = null;
+    if (parentEdge.length > 0) {
+      const [p] = await db
+        .select({
+          id: items.id,
+          name: items.name,
+          kind: items.kind,
+          slug: items.slug,
+          description: items.description,
+        })
+        .from(items)
+        .where(eq(items.id, parentEdge[0].sourceId));
+      familyParent = p || null;
+    }
+
     // Fetch files for component/collection
     let files: any[] = [];
     if (record.kind === "component" || record.kind === "collection") {
@@ -435,7 +489,7 @@ router.get("/:id", async (req: express.Request, res: express.Response) => {
     }
 
     res.status(200).json({
-      data: { ...record, children, expansions: expansionEdges, files },
+      data: { ...record, children, expansions: expansionEdges, belongsTo, familyParent, files },
     });
   } catch (e) {
     console.error(e);
