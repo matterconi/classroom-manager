@@ -33,10 +33,18 @@ function ItemLink({ item }: { item: ItemSummary }) {
 }
 
 export function RelationshipsCard({ record }: { record: Item }) {
+  console.log("[RelationshipsCard] record keys:", Object.keys(record));
+  console.log("[RelationshipsCard] belongsTo:", record.belongsTo);
+  console.log("[RelationshipsCard] parts:", record.parts);
+  console.log("[RelationshipsCard] familyParent:", record.familyParent);
+  console.log("[RelationshipsCard] children:", record.children);
+
   const hasBelongsTo = record.belongsTo && record.belongsTo.length > 0;
   const hasParts = record.parts && record.parts.length > 0;
   const hasParent = !!record.familyParent;
   const hasChildren = record.children && record.children.length > 0;
+
+  console.log("[RelationshipsCard] flags:", { hasBelongsTo, hasParts, hasParent, hasChildren });
 
   if (!hasBelongsTo && !hasParts && !hasParent && !hasChildren) return null;
 
