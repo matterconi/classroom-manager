@@ -1,7 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Link } from "react-router";
-import { Network, GitFork } from "lucide-react";
+import { Network, GitFork, Puzzle } from "lucide-react";
 import type { Item, ItemSummary, ItemKind } from "@/types";
 
 const kindToRoute: Record<ItemKind, string> = {
@@ -34,10 +34,11 @@ function ItemLink({ item }: { item: ItemSummary }) {
 
 export function RelationshipsCard({ record }: { record: Item }) {
   const hasBelongsTo = record.belongsTo && record.belongsTo.length > 0;
+  const hasParts = record.parts && record.parts.length > 0;
   const hasParent = !!record.familyParent;
   const hasChildren = record.children && record.children.length > 0;
 
-  if (!hasBelongsTo && !hasParent && !hasChildren) return null;
+  if (!hasBelongsTo && !hasParts && !hasParent && !hasChildren) return null;
 
   return (
     <Card className="mt-4">
@@ -45,6 +46,36 @@ export function RelationshipsCard({ record }: { record: Item }) {
         <CardTitle className="text-lg">Relationships</CardTitle>
       </CardHeader>
       <CardContent className="space-y-5">
+        {/* Parts (structural children via belongs_to) */}
+        {hasParts && (
+          <div>
+            <div className="mb-2 flex items-center gap-2 text-sm font-medium text-muted-foreground">
+              <Puzzle className="h-4 w-4" />
+              Parts ({record.parts!.length})
+            </div>
+            <div className="space-y-1">
+              {record.parts!.map((part) => (
+                <ItemLink key={part.id} item={part} />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Belongs To (this item is part of...) */}
+        {hasBelongsTo && (
+          <div>
+            <div className="mb-2 flex items-center gap-2 text-sm font-medium text-muted-foreground">
+              <Network className="h-4 w-4" />
+              Belongs To
+            </div>
+            <div className="space-y-1">
+              {record.belongsTo!.map((group) => (
+                <ItemLink key={group.id} item={group} />
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Family (parent edge) */}
         {(hasParent || hasChildren) && (
           <div>
@@ -82,21 +113,6 @@ export function RelationshipsCard({ record }: { record: Item }) {
                   </div>
                 </div>
               )}
-            </div>
-          </div>
-        )}
-
-        {/* Belongs To (structural composition) */}
-        {hasBelongsTo && (
-          <div>
-            <div className="mb-2 flex items-center gap-2 text-sm font-medium text-muted-foreground">
-              <Network className="h-4 w-4" />
-              Belongs To
-            </div>
-            <div className="space-y-1">
-              {record.belongsTo!.map((group) => (
-                <ItemLink key={group.id} item={group} />
-              ))}
             </div>
           </div>
         )}

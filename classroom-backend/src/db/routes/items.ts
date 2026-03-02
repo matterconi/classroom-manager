@@ -451,6 +451,33 @@ router.get("/:id", async (req: express.Request, res: express.Response) => {
         .orderBy(items.name);
     }
 
+    // Fetch parts (items that belong to this item via belongs_to)
+    const partsEdges = await db
+      .select({ sourceId: edges.sourceId })
+      .from(edges)
+      .where(
+        and(
+          eq(edges.targetId, id),
+          eq(edges.type, "belongs_to"),
+        ),
+      );
+
+    let parts: any[] = [];
+    if (partsEdges.length > 0) {
+      const partIds = partsEdges.map((e) => e.sourceId);
+      parts = await db
+        .select({
+          id: items.id,
+          name: items.name,
+          kind: items.kind,
+          slug: items.slug,
+          description: items.description,
+        })
+        .from(items)
+        .where(sql`${items.id} IN (${sql.join(partIds.map(pid => sql`${pid}`), sql`, `)})`)
+        .orderBy(items.name);
+    }
+
     // Fetch family parent (parent → this item)
     const parentEdge = await db
       .select({ sourceId: edges.sourceId })
@@ -489,7 +516,7 @@ router.get("/:id", async (req: express.Request, res: express.Response) => {
     }
 
     res.status(200).json({
-      data: { ...record, children, expansions: expansionEdges, belongsTo, familyParent, files },
+      data: { ...record, children, expansions: expansionEdges, belongsTo, parts, familyParent, files },
     });
   } catch (e) {
     console.error(e);

@@ -107,6 +107,7 @@ export type Item = {
   children?: Item[];
   expansions?: Edge[];
   belongsTo?: ItemSummary[];
+  parts?: ItemSummary[];
   familyParent?: ItemSummary;
   files?: ItemFile[];
   filesCount?: number;
