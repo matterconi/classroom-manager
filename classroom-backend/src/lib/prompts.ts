@@ -643,12 +643,32 @@ Abstract away from the project domain. Names should describe the generic pattern
 - BAD: useStreamingSearchFetch (tied to one codebase), calculateTotalPrice (domain-specific), playGame (too specific)
 
 GENERALIZATION — CODE:
-Keep the real implementation logic intact but replace domain-specific variable names with generic ones.
-- Replace: "products" → "items", "totalPrice" → "result", "userProfile" → "data", "searchQuery" → "query"
-- Keep: algorithm structure, hook patterns, error handling, data flow, type annotations
-- Do NOT invent new code — only rename variables/parameters to be domain-agnostic.
-- Do NOT include import statements in atom code — only the function/const itself.
-- If a helper function is only used by one main function, include it as part of that atom's code.
+Transform the code so it represents the ABSTRACT PATTERN, not the specific project implementation.
+
+1. RENAME everything domain-specific to generic equivalents:
+   - Variables: "products" → "items", "totalPrice" → "result", "userProfile" → "data"
+   - Functions: "convertPdfToImage" → "convertFile", "analyzeResume" → "analyzeContent", "uploadResume" → "uploadFile"
+   - Types: "ResumeData" → "ProcessedData", "JobPosting" → "TargetConfig"
+   - API calls: "ai.feedback" → "aiService.analyze", "fs.upload" → "storageService.upload"
+   - Routes: "/resume/:id" → "/item/:id"
+
+2. REPLACE platform-specific APIs with generic interfaces:
+   - "usePuterStore()" → "useServiceStore()" or destructure as generic services
+   - "kv.set(`resume:${id}`)" → "store.set(`item:${id}`)"
+   - Keep the SHAPE of the call (async, params, return type) but genericize the name
+
+3. KEEP intact:
+   - Algorithm structure, control flow, error handling patterns
+   - Hook patterns (useState, useEffect, custom hook shape)
+   - Data flow and transformation logic
+   - Type annotations (but genericize type names)
+   - The overall architectural pattern
+
+4. Do NOT invent new logic — only abstract away domain-specific naming and APIs.
+5. Do NOT include import statements in atom code — only the function/const itself.
+6. If a helper function is only used by one main function, include it as part of that atom's code.
+
+The goal: someone reading the atom code should see a REUSABLE PATTERN, not recognize which project it came from.
 
 QUALITY FILTER — only include atoms that meet BOTH criteria:
 1. GENERALIZABLE: The pattern can be abstracted from this specific project. It solves a general problem.
