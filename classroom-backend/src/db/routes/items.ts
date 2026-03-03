@@ -10,7 +10,7 @@ import {
   getTableColumns,
 } from "drizzle-orm";
 import { db } from "../index.js";
-import { items, itemFiles, categories, edges, treeNodes } from "../schema/index.js";
+import { items, itemFiles, itemFileLinks, categories, edges, treeNodes } from "../schema/index.js";
 import { generateEmbedding } from "../../lib/embeddings.js";
 import { rerankCandidates, type ScoringFields } from "../../lib/scoring.js";
 import type { JudgeCandidateInput } from "../../lib/prompts.js";
@@ -505,13 +505,30 @@ router.get("/:id", async (req: express.Request, res: express.Response) => {
       familyParent = p || null;
     }
 
-    // Fetch files for component/collection
+    // Fetch own files (item_files owned by this item — organisms/top-level)
     let files: any[] = [];
-    if (record.kind === "component" || record.kind === "collection") {
+    if (record.kind === "component" || record.kind === "collection" || record.kind === "structure") {
       files = await db
         .select()
         .from(itemFiles)
         .where(eq(itemFiles.itemId, id))
+        .orderBy(asc(itemFiles.order));
+    }
+
+    // Fetch linked files (item_file_links — child items referencing organism's files)
+    let linkedFiles: any[] = [];
+    if (files.length === 0) {
+      linkedFiles = await db
+        .select({
+          id: itemFiles.id,
+          name: itemFiles.name,
+          code: itemFiles.code,
+          language: itemFiles.language,
+          order: itemFiles.order,
+        })
+        .from(itemFileLinks)
+        .innerJoin(itemFiles, eq(itemFileLinks.itemFileId, itemFiles.id))
+        .where(eq(itemFileLinks.itemId, id))
         .orderBy(asc(itemFiles.order));
     }
 
@@ -545,7 +562,7 @@ router.get("/:id", async (req: express.Request, res: express.Response) => {
     }
 
     res.status(200).json({
-      data: { ...record, children, expansions: expansionEdges, belongsTo, parts, familyParent, semanticFamily, files },
+      data: { ...record, children, expansions: expansionEdges, belongsTo, parts, familyParent, semanticFamily, files, linkedFiles },
     });
   } catch (e) {
     console.error(e);
@@ -611,7 +628,7 @@ router.post("/", async (req: express.Request, res: express.Response) => {
 
       // 1 DS call: classify + decompose in one shot (replaces old classify + decompose)
       outline = await decomposeOutline(files, meta);
-      console.log(`[ingest] Outline: ${outline.organism.kind} "${outline.organism.name}" → ${outline.sub_organisms.length} sub_organisms, ${outline.molecules.length} molecules`);
+      console.log(`[ingest] Outline: ${outline.organism.kind} "${outline.organism.name}" → ${outline.children.length} children`);
 
       // Apply classification fields from outline organism
       kind = outline.organism.kind;
@@ -656,7 +673,7 @@ router.post("/", async (req: express.Request, res: express.Response) => {
         .where(
           and(
             sql`LOWER(${items.name}) = LOWER(${name})`,
-            eq(items.kind, kind as "snippet" | "component" | "collection"),
+            eq(items.kind, kind as ItemKind),
           ),
         )
         .limit(1);
@@ -813,8 +830,7 @@ router.post("/", async (req: express.Request, res: express.Response) => {
           entryFile: outline.organism.entryFile,
           files: outline.organism.files,
         },
-        sub_organisms: outline.sub_organisms.map((s) => ({ name: s.name, files: s.files, is_demoable: s.is_demoable })),
-        molecules: outline.molecules.map((m) => ({ name: m.name, files: m.files, is_demoable: m.is_demoable })),
+        children: outline.children.map((c) => ({ name: c.name, kind: c.kind, files: c.files, is_demoable: c.is_demoable })),
       },
     });
     ingestLogs.push({

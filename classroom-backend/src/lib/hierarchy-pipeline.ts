@@ -1,22 +1,25 @@
 /**
- * Hierarchy Pipeline v3 — Recursive decompose + resolve fused.
+ * Hierarchy Pipeline v4 — Unified children + file-partitioned dedup.
+ *
+ * Changes from v3:
+ *   - Unified children array (no more sub_organisms/molecules split)
+ *   - Each piece has a `kind` assigned by the LLM
+ *   - File-partitioned dedup: Jaccard horizontal (siblings) + vertical (child vs parent)
+ *   - Consumed-files tracking: files claimed by a sibling are removed from later siblings
+ *   - File link tracking: item_file_links junction table for frontend file display
+ *   - Composites (component/structure/collection) → recursively decompose
+ *   - Leaves (element/snippet) → extract atoms
  *
  * Each recursive step:
  *   1. RESOLVE the current piece (auto-reuse → search → judge → create)
- *   2. If created: DECOMPOSE into children (1 LLM call)
- *   3. RECURSE on children
+ *   2. If created + composite: DECOMPOSE into children (1 LLM call) → RECURSE
+ *   3. If created + leaf-parent: EXTRACT atoms → resolve each
  *   4. If reused: skip decompose (children already exist)
- *
- * Flow:
- *   outline(files) → organism + direct children (sub_organisms/molecules)
- *   for each sub_organism: resolve → decomposeChildren → recurse
- *   for each molecule: resolve → extractAtoms → resolve each atom
- *   orphan files → decomposeChildren → same recursive treatment
  */
 
 import { eq, and, sql } from "drizzle-orm";
 import { db } from "../db/index.js";
-import { items, edges, treeNodes } from "../db/schema/index.js";
+import { items, edges, treeNodes, itemFiles, itemFileLinks } from "../db/schema/index.js";
 import type { ItemKind } from "../db/schema/app.js";
 import { generateJSON } from "./deepseek.js";
 import { generateEmbedding } from "./embeddings.js";
@@ -68,8 +71,9 @@ export type OutlineOrganism = {
 	files: OrganismFile[];
 };
 
-type OutlinePiece = {
+type ChildPiece = {
 	name: string;
+	kind: ItemKind;
 	description: string;
 	is_demoable: boolean;
 	files: string[];
@@ -86,17 +90,16 @@ type OutlinePiece = {
 
 export type OutlineResult = {
 	organism: OutlineOrganism;
-	sub_organisms: OutlinePiece[];
-	molecules: OutlinePiece[];
+	children: ChildPiece[];
 };
 
 type DecomposeChildrenResult = {
-	sub_organisms: OutlinePiece[];
-	molecules: OutlinePiece[];
+	children: ChildPiece[];
 };
 
 type DetailAtom = {
 	name: string;
+	kind?: ItemKind;
 	description: string;
 	code: string;
 	is_demoable: boolean;
@@ -156,7 +159,7 @@ type ResolveResult = {
 export type PieceRecord = {
 	name: string;
 	itemId: number;
-	level: string;
+	kind: ItemKind;
 	action: "created" | "reused";
 	makeDemo: boolean;
 	verdict: "clone" | "variant" | "parent_of" | "expansion" | null;
@@ -211,6 +214,8 @@ const AUTO_REUSE_THRESHOLD = 0.875;
 const SIMILARITY_LIMIT = 15;
 const RERANK_TOP = 5;
 const SIGNATURE_LINES = 30;
+const JACCARD_HORIZONTAL_THRESHOLD = 0.7;
+const JACCARD_VERTICAL_THRESHOLD = 0.8;
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -218,17 +223,100 @@ function slugify(text: string): string {
 	return text.toLowerCase().replace(/\s+/g, "-").replace(/[^\w-]/g, "");
 }
 
-function levelToKind(level: string): ItemKind {
-	switch (level) {
-		case "sub_organism":
-			return "collection";
-		case "molecule":
-			return "component";
-		case "atom":
-			return "snippet";
-		default:
-			return "component";
+/** Is this kind a composite that should be recursively decomposed? */
+function isComposite(kind: ItemKind): boolean {
+	return kind === "component" || kind === "structure" || kind === "collection";
+}
+
+/** Jaccard similarity between two sets of strings. */
+function jaccardSimilarity(a: string[], b: string[]): number {
+	const setA = new Set(a);
+	const setB = new Set(b);
+	let intersection = 0;
+	for (const item of setA) {
+		if (setB.has(item)) intersection++;
 	}
+	const union = setA.size + setB.size - intersection;
+	return union === 0 ? 0 : intersection / union;
+}
+
+// ── File Deduplication ───────────────────────────────────────────────────────
+
+/**
+ * Deduplicate children pieces based on file overlap.
+ *
+ * Horizontal: merge siblings with Jaccard ≥ 0.7 on file sets.
+ * Vertical: skip children whose file set is ≥ 0.8 similar to parent's.
+ * Strip: remove duplicate file assignments (winner = piece with most files).
+ */
+function deduplicatePieces(
+	pieces: ChildPiece[],
+	parentFiles: string[],
+	logs: LogEntry[],
+): ChildPiece[] {
+	if (pieces.length === 0) return pieces;
+
+	let result = [...pieces];
+
+	// ── Vertical dedup: skip children too similar to parent ──────────
+	result = result.filter((p) => {
+		const j = jaccardSimilarity(p.files, parentFiles);
+		if (j >= JACCARD_VERTICAL_THRESHOLD) {
+			plog(logs, "dedup", `SKIP vertical: "${p.name}" file set too similar to parent (Jaccard: ${j.toFixed(3)})`, { item: p.name });
+			return false;
+		}
+		return true;
+	});
+
+	// ── Horizontal dedup: merge siblings with high overlap ──────────
+	let merged = true;
+	while (merged) {
+		merged = false;
+		for (let i = 0; i < result.length; i++) {
+			for (let j = i + 1; j < result.length; j++) {
+				const jac = jaccardSimilarity(result[i]!.files, result[j]!.files);
+				if (jac >= JACCARD_HORIZONTAL_THRESHOLD) {
+					const bigger = result[i]!.files.length >= result[j]!.files.length ? i : j;
+					const smaller = bigger === i ? j : i;
+					const mergedFiles = [...new Set([...result[bigger]!.files, ...result[smaller]!.files])];
+					plog(logs, "dedup", `MERGE horizontal: "${result[smaller]!.name}" → "${result[bigger]!.name}" (Jaccard: ${jac.toFixed(3)})`, {
+						item: result[bigger]!.name,
+						data: { absorbed: result[smaller]!.name, jaccard: jac, mergedFiles },
+					});
+					result[bigger]!.files = mergedFiles;
+					result[bigger]!.description = `${result[bigger]!.description}. Also: ${result[smaller]!.description}`;
+					result.splice(smaller, 1);
+					merged = true;
+					break;
+				}
+			}
+			if (merged) break;
+		}
+	}
+
+	// ── Strip duplicate files across remaining pieces ────────────────
+	// Sort by file count descending — bigger pieces claim files first
+	result.sort((a, b) => b.files.length - a.files.length);
+	const claimed = new Set<string>();
+	for (const piece of result) {
+		const uniqueFiles = piece.files.filter((f) => !claimed.has(f));
+		if (uniqueFiles.length < piece.files.length) {
+			plog(logs, "dedup", `STRIP: "${piece.name}" lost ${piece.files.length - uniqueFiles.length} files already claimed by siblings`, { item: piece.name });
+		}
+		piece.files = uniqueFiles;
+		for (const f of uniqueFiles) claimed.add(f);
+	}
+
+	// Remove pieces with no files left
+	result = result.filter((p) => {
+		if (p.files.length === 0) {
+			plog(logs, "dedup", `REMOVE: "${p.name}" has no files left after dedup`, { item: p.name });
+			return false;
+		}
+		return true;
+	});
+
+	return result;
 }
 
 // ── Phase 1a: Outline + Classify ─────────────────────────────────────────────
@@ -236,7 +324,6 @@ function levelToKind(level: string): ItemKind {
 /**
  * Decompose files into an outline: organism classification + direct children.
  * Only sends file signatures (~30 lines each), not full code.
- * Returns sub_organisms and molecules — NO atoms (extracted later per molecule).
  */
 export async function decomposeOutline(
 	files: FileInput[],
@@ -252,18 +339,23 @@ export async function decomposeOutline(
 		signature: f.code.split("\n").slice(0, SIGNATURE_LINES).join("\n"),
 	}));
 	const userPrompt = buildOutlineUserPrompt(signatures, meta);
-	return generateJSON<OutlineResult>(
+	const raw = await generateJSON<any>(
 		DECOMPOSE_OUTLINE_SYSTEM_PROMPT,
 		userPrompt,
 	);
+	// Normalize: support both old format (sub_organisms/molecules) and new (children)
+	const children: ChildPiece[] = raw.children || [
+		...(raw.sub_organisms || []).map((s: any) => ({ ...s, kind: s.kind || "structure" })),
+		...(raw.molecules || []).map((m: any) => ({ ...m, kind: m.kind || "component" })),
+	];
+	return { organism: raw.organism, children };
 }
 
-// ── Phase 1b: Decompose Children (sub_organism → sub_organisms/molecules) ───
+// ── Phase 1b: Decompose Children ─────────────────────────────────────────────
 
 /**
- * Decompose a sub_organism into its direct children.
+ * Decompose a composite into its direct children.
  * Sends FULL code (not signatures) for accurate decomposition.
- * Can return sub_organisms (recursive) and/or molecules.
  */
 async function decomposeChildren(
 	parentName: string,
@@ -273,43 +365,45 @@ async function decomposeChildren(
 	meta?: { types?: string[]; domains?: string[]; tags?: string[] },
 ): Promise<DecomposeChildrenResult> {
 	plog(logs, "decompose-children", `Decomposing "${parentName}" (${files.length} files)`, { item: parentName });
-	const result = await generateJSON<DecomposeChildrenResult>(
+	const raw = await generateJSON<any>(
 		DECOMPOSE_CHILDREN_SYSTEM_PROMPT,
 		buildDecomposeChildrenUserPrompt(parentName, parentDescription, files, meta),
 	);
-	plog(logs, "decompose-children", `Result: ${result.sub_organisms.length} sub_organisms, ${result.molecules.length} molecules`, {
+	// Normalize: support both old format and new
+	const children: ChildPiece[] = raw.children || [
+		...(raw.sub_organisms || []).map((s: any) => ({ ...s, kind: s.kind || "structure" })),
+		...(raw.molecules || []).map((m: any) => ({ ...m, kind: m.kind || "component" })),
+	];
+	plog(logs, "decompose-children", `Result: ${children.length} children`, {
 		item: parentName,
-		data: {
-			sub_organisms: result.sub_organisms.map((s) => s.name),
-			molecules: result.molecules.map((m) => m.name),
-		},
+		data: { children: children.map((c) => ({ name: c.name, kind: c.kind, files: c.files })) },
 	});
-	return result;
+	return { children };
 }
 
 // ── Phase 1c: Atom Extraction ────────────────────────────────────────────────
 
 /**
- * Extract atoms from a molecule's full source files.
- * Called only for NEW molecules (reused ones already have atoms).
+ * Extract atoms (elements/snippets) from a composite's full source files.
+ * Called only for NEW composites (reused ones already have atoms).
  */
 async function extractAtoms(
-	moleculeName: string,
-	moleculeFiles: FileInput[],
+	compositeName: string,
+	compositeFiles: FileInput[],
 	logs: LogEntry[],
 	meta?: { types?: string[]; domains?: string[]; tags?: string[] },
 ): Promise<ExtractAtomsResult> {
-	plog(logs, "extract-atoms", `Extracting atoms from "${moleculeName}" (${moleculeFiles.length} files)`, { item: moleculeName });
+	plog(logs, "extract-atoms", `Extracting atoms from "${compositeName}" (${compositeFiles.length} files)`, { item: compositeName });
 	const result = await generateJSON<ExtractAtomsResult>(
 		DECOMPOSE_DETAIL_SYSTEM_PROMPT,
-		buildDetailUserPrompt(moleculeName, moleculeFiles, meta),
+		buildDetailUserPrompt(compositeName, compositeFiles, meta),
 	);
 	// Normalize: ensure skipped array exists
 	if (!result.skipped) result.skipped = [];
 	plog(logs, "extract-atoms", `Found ${result.atoms.length} atoms, skipped ${result.skipped.length}: ${result.atoms.map((a) => a.name).join(", ")}`, {
-		item: moleculeName,
+		item: compositeName,
 		data: {
-			kept: result.atoms.map((a) => ({ name: a.name, is_demoable: a.is_demoable, rationale: a.quality_rationale })),
+			kept: result.atoms.map((a) => ({ name: a.name, kind: a.kind, is_demoable: a.is_demoable, rationale: a.quality_rationale })),
 			skipped: result.skipped,
 		},
 	});
@@ -554,20 +648,18 @@ async function findSimilarCandidates(
  */
 async function resolveItem(
 	piece: PieceToResolve,
-	level: string,
+	kind: ItemKind,
 	context: string,
 	logs: LogEntry[],
 	categoryId?: number | null,
 ): Promise<ResolveResult> {
-	const kind = levelToKind(level);
-
-	plog(logs, "resolve", `── Resolving "${piece.name}" (level: ${level}, kind: ${kind}) ──`, { level, item: piece.name });
+	plog(logs, "resolve", `── Resolving "${piece.name}" (kind: ${kind}) ──`, { item: piece.name });
 
 	// Cascade 1: Auto-reuse by name + kind + vector ≥ 0.875
 	const autoReuse = await tryAutoReuse(piece.name, kind, piece.description, logs);
 
 	if (autoReuse.reused && autoReuse.itemId) {
-		plog(logs, "resolve", `RESULT: REUSED (clone) → item #${autoReuse.itemId}`, { level, item: piece.name });
+		plog(logs, "resolve", `RESULT: REUSED (clone) → item #${autoReuse.itemId}`, { item: piece.name });
 		return {
 			itemId: autoReuse.itemId,
 			action: "reused",
@@ -644,7 +736,7 @@ async function resolveItem(
 					.set({ semanticNodeId: newNode!.id })
 					.where(eq(items.id, best.candidateId));
 				plog(logs, "semantic", `Created semantic node #${newNode!.id} "${piece.name}" as parent of item #${best.candidateId}`, { item: piece.name });
-				plog(logs, "resolve", `RESULT: REUSED (parent_of) → item #${best.candidateId} (confidence: ${best.confidence})`, { level, item: piece.name });
+				plog(logs, "resolve", `RESULT: REUSED (parent_of) → item #${best.candidateId} (confidence: ${best.confidence})`, { item: piece.name });
 				return {
 					itemId: best.candidateId,
 					action: "reused",
@@ -683,7 +775,7 @@ async function resolveItem(
 					item: piece.name,
 					data: { sourceId: itemId, targetId: best.candidateId, type: "expansion" },
 				});
-				plog(logs, "resolve", `RESULT: CREATED (variant of #${best.candidateId}) → item #${itemId}`, { level, item: piece.name });
+				plog(logs, "resolve", `RESULT: CREATED (variant of #${best.candidateId}) → item #${itemId}`, { item: piece.name });
 				return {
 					itemId,
 					action: "created",
@@ -710,7 +802,7 @@ async function resolveItem(
 					item: piece.name,
 					data: { sourceId: itemId, targetId: best.candidateId, type: "expansion" },
 				});
-				plog(logs, "resolve", `RESULT: CREATED (expansion of #${best.candidateId}) → item #${itemId}`, { level, item: piece.name });
+				plog(logs, "resolve", `RESULT: CREATED (expansion of #${best.candidateId}) → item #${itemId}`, { item: piece.name });
 				return {
 					itemId,
 					action: "created",
@@ -725,7 +817,7 @@ async function resolveItem(
 
 	// Cascade 3: No match — create new (reuse embedding)
 	const itemId = await createItem(piece, kind, logs, autoReuse.embedding || embedding, categoryId);
-	plog(logs, "resolve", `RESULT: CREATED (new, no match) → item #${itemId}`, { level, item: piece.name });
+	plog(logs, "resolve", `RESULT: CREATED (new, no match) → item #${itemId}`, { item: piece.name });
 	return { itemId, action: "created", verdict: null, matchedItemId: null };
 }
 
@@ -752,8 +844,6 @@ async function createItem(
 			slug,
 			code: piece.code || null,
 			description: piece.description,
-			// AIA classification fields (type, domain, stack, language) NOT written to items.
-			// They live in tree_nodes.metadata for semantic families.
 			libraries: libs,
 			tags,
 			categoryId: categoryId || null,
@@ -784,6 +874,50 @@ async function createItem(
 	}
 
 	return created.id;
+}
+
+// ── File Link Creation ───────────────────────────────────────────────────────
+
+/**
+ * Create item_file_links for a child item, linking it to the organism's item_files.
+ * Resolves file names → item_file IDs via the organism's item_files rows.
+ */
+async function createFileLinks(
+	childItemId: number,
+	fileNames: string[],
+	organismItemId: number,
+	logs: LogEntry[],
+): Promise<void> {
+	if (fileNames.length === 0) return;
+
+	// Find matching item_files from the organism
+	const matchingFiles = await db
+		.select({ id: itemFiles.id, name: itemFiles.name })
+		.from(itemFiles)
+		.where(
+			and(
+				eq(itemFiles.itemId, organismItemId),
+				sql`${itemFiles.name} IN (${sql.join(fileNames.map((n) => sql`${n}`), sql`, `)})`,
+			),
+		);
+
+	if (matchingFiles.length === 0) {
+		plog(logs, "file-links", `No matching item_files found for item #${childItemId} (files: ${fileNames.join(", ")})`, {
+			data: { childItemId, fileNames, organismItemId },
+		});
+		return;
+	}
+
+	const linkValues = matchingFiles.map((f) => ({
+		itemId: childItemId,
+		itemFileId: f.id,
+	}));
+
+	await db.insert(itemFileLinks).values(linkValues).onConflictDoNothing();
+
+	plog(logs, "file-links", `Created ${matchingFiles.length} file link(s) for item #${childItemId}`, {
+		data: { childItemId, linkedFiles: matchingFiles.map((f) => f.name) },
+	});
 }
 
 // ── Belongs-to Edge ──────────────────────────────────────────────────────────
@@ -837,23 +971,21 @@ async function createBelongsToEdge(
 // ── Recursive Process Children ───────────────────────────────────────────────
 
 /**
- * Process a list of children: resolve each, then recurse.
+ * Process a unified list of children: resolve each, then recurse or extract atoms.
  *
- * For each sub_organism (SEQUENTIAL):
- *   1. Resolve (auto-reuse → judge → create)
- *   2. If created → decomposeChildren → recurse
- *   3. If reused → skip (children already exist in DB)
- *
- * For each molecule (SEQUENTIAL):
- *   1. Resolve
- *   2. If created → extractAtoms → resolve each atom
- *   3. If reused → skip
+ * For each child (SEQUENTIAL, sorted by files.length desc):
+ *   1. Check consumed files — skip if all files already claimed by a sibling
+ *   2. Resolve (auto-reuse → judge → create)
+ *   3. Create file links (item_file_links)
+ *   4. If created + composite kind → decomposeChildren → recurse
+ *   5. If created + leaf kind → extractAtoms → resolve each atom
+ *   6. If reused → skip (children already exist in DB)
  */
 async function processChildren(
-	subOrganisms: OutlinePiece[],
-	molecules: OutlinePiece[],
+	children: ChildPiece[],
 	parentName: string,
 	parentItemId: number,
+	organismItemId: number,
 	sourceFiles: FileInput[],
 	significantFiles: Set<string>,
 	records: PieceRecord[],
@@ -863,206 +995,237 @@ async function processChildren(
 	meta?: { types?: string[]; domains?: string[]; tags?: string[] },
 	categoryId?: number | null,
 ): Promise<void> {
-	plog(logs, "process", `Processing children of "${parentName}" (item #${parentItemId}): ${subOrganisms.length} sub_organisms, ${molecules.length} molecules`, {
+	plog(logs, "process", `Processing ${children.length} children of "${parentName}" (item #${parentItemId})`, {
 		item: parentName,
-		data: {
-			sub_organisms: subOrganisms.map((s) => s.name),
-			molecules: molecules.map((m) => m.name),
-		},
+		data: { children: children.map((c) => ({ name: c.name, kind: c.kind, files: c.files })) },
 	});
 
-	// ── Sub-organisms — sequential, 1 at a time ─────────────────────────
+	// Sort by files.length descending — bigger pieces get priority
+	const sorted = [...children].sort((a, b) => b.files.length - a.files.length);
 
-	for (const subOrg of subOrganisms) {
-		const piece: PieceToResolve = { ...subOrg, parent: parentName };
-		const context = `Sub-organism of "${parentName}"`;
+	// Track consumed files within this sibling group
+	const consumedFiles = new Set<string>();
 
-		try {
-			const result = await resolveItem(piece, "sub_organism", context, logs, categoryId);
-			resolvedItems.set(subOrg.name, result.itemId);
-
-			if (result.itemId !== parentItemId) {
-				await createBelongsToEdge(result.itemId, parentItemId, logs, {
-					level: "sub_organism",
-				});
-				edgeRecords.push({
-					sourceId: result.itemId,
-					targetId: parentItemId,
-					type: "belongs_to",
-				});
-			} else {
-				plog(logs, "edge", `Skipped belongs_to: "${subOrg.name}" resolved to parent #${parentItemId} itself`, { item: subOrg.name });
-			}
-			records.push({
-				name: subOrg.name,
-				itemId: result.itemId,
-				level: "sub_organism",
-				action: result.action,
-				makeDemo: subOrg.is_demoable,
-				verdict: result.verdict,
-				matchedItemId: result.matchedItemId,
-				files: subOrg.files,
-			});
-
-			// If created → decompose children recursively
-			if (result.action === "created") {
-				const subFiles = sourceFiles.filter((f) =>
-					subOrg.files.includes(f.name),
-				);
-				if (subFiles.length > 0) {
-					const children = await decomposeChildren(
-						subOrg.name,
-						subOrg.description,
-						subFiles,
-						logs,
-						meta,
-					);
-
-					// Recurse
-					await processChildren(
-						children.sub_organisms,
-						children.molecules,
-						subOrg.name,
-						result.itemId,
-						subFiles,
-						significantFiles,
-						records,
-						edgeRecords,
-						resolvedItems,
-						logs,
-						meta,
-						categoryId,
-					);
-				} else {
-					plog(logs, "process", `No source files for sub_organism "${subOrg.name}" — skipping decompose`, { item: subOrg.name });
-				}
-			} else {
-				plog(logs, "process", `Sub_organism "${subOrg.name}" was reused — skipping decompose`, { item: subOrg.name });
-			}
-		} catch (err) {
-			plog(logs, "error", `Failed sub_organism "${subOrg.name}": ${err}`, { item: subOrg.name });
+	for (const child of sorted) {
+		// ── Consumed-files check ─────────────────────────────────────
+		const remainingFiles = child.files.filter((f) => !consumedFiles.has(f));
+		if (remainingFiles.length === 0) {
+			plog(logs, "process", `SKIP "${child.name}": all ${child.files.length} files already consumed by siblings`, { item: child.name });
+			continue;
 		}
-	}
+		if (remainingFiles.length < child.files.length) {
+			plog(logs, "process", `"${child.name}": removed ${child.files.length - remainingFiles.length} files already consumed by siblings`, { item: child.name });
+			child.files = remainingFiles;
+		}
 
-	// ── Molecules — sequential ──────────────────────────────────────────
-
-	for (const molecule of molecules) {
-		const piece: PieceToResolve = { ...molecule, parent: parentName };
-		const context = `Molecule of "${parentName}"`;
+		const kind = child.kind;
+		const piece: PieceToResolve = { ...child, parent: parentName };
+		const context = `Child of "${parentName}" (kind: ${kind})`;
 
 		try {
-			const result = await resolveItem(piece, "molecule", context, logs, categoryId);
-			resolvedItems.set(molecule.name, result.itemId);
+			const result = await resolveItem(piece, kind, context, logs, categoryId);
+			resolvedItems.set(child.name, result.itemId);
+
+			// Mark files as consumed
+			for (const f of child.files) consumedFiles.add(f);
 
 			if (result.itemId !== parentItemId) {
-				await createBelongsToEdge(result.itemId, parentItemId, logs, {
-					level: "molecule",
-				});
+				await createBelongsToEdge(result.itemId, parentItemId, logs, { kind });
 				edgeRecords.push({
 					sourceId: result.itemId,
 					targetId: parentItemId,
 					type: "belongs_to",
 				});
 			} else {
-				plog(logs, "edge", `Skipped belongs_to: "${molecule.name}" resolved to parent #${parentItemId} itself`, { item: molecule.name });
+				plog(logs, "edge", `Skipped belongs_to: "${child.name}" resolved to parent #${parentItemId} itself`, { item: child.name });
 			}
+
+			// Create file links
+			if (result.action === "created" && child.files.length > 0) {
+				await createFileLinks(result.itemId, child.files, organismItemId, logs);
+			}
+
 			records.push({
-				name: molecule.name,
+				name: child.name,
 				itemId: result.itemId,
-				level: "molecule",
+				kind,
 				action: result.action,
-				makeDemo: molecule.is_demoable,
+				makeDemo: child.is_demoable,
 				verdict: result.verdict,
 				matchedItemId: result.matchedItemId,
-				files: molecule.files,
+				files: child.files,
 			});
 
-			// If created → extract atoms
+			// If created → decompose further based on kind
 			if (result.action === "created") {
-				const molFiles = sourceFiles.filter((f) =>
-					molecule.files.includes(f.name) && significantFiles.has(f.name),
-				);
-				if (molFiles.length > 0) {
-					try {
-						const extractResult = await extractAtoms(
-							molecule.name,
-							molFiles,
+				if (isComposite(kind)) {
+					// Composite: recursively decompose into children
+					const childFiles = sourceFiles.filter((f) =>
+						child.files.includes(f.name),
+					);
+					if (childFiles.length > 0) {
+						const decomposed = await decomposeChildren(
+							child.name,
+							child.description,
+							childFiles,
 							logs,
 							meta,
 						);
 
-						// Log skipped atoms
-						for (const skipped of extractResult.skipped) {
-							plog(logs, "filter", `Skipped atom "${skipped.name}": ${skipped.reason}`, { item: skipped.name });
-						}
+						// Deduplicate before recursing
+						const parentFileNames = child.files;
+						const deduped = deduplicatePieces(decomposed.children, parentFileNames, logs);
 
-						// Resolve each kept atom
-						for (const atom of extractResult.atoms) {
-							const atomPiece: PieceToResolve = {
-								name: atom.name,
-								description: atom.description,
-								code: atom.code,
-								is_demoable: atom.is_demoable,
-								files: [],
-								parent: molecule.name,
-								metadata: atom.metadata,
-								libraries: atom.libraries || atom.metadata?.libraries,
-								tags: atom.tags || atom.metadata?.tags,
-							};
-							const atomContext = `Atom of "${molecule.name}"`;
-
-							try {
-								const atomResult = await resolveItem(
-									atomPiece,
-									"atom",
-									atomContext,
+						if (deduped.length > 0) {
+							// Recurse
+							await processChildren(
+								deduped,
+								child.name,
+								result.itemId,
+								organismItemId,
+								childFiles,
+								significantFiles,
+								records,
+								edgeRecords,
+								resolvedItems,
+								logs,
+								meta,
+								categoryId,
+							);
+						} else {
+							// No meaningful children → extract atoms directly
+							const sigFiles = childFiles.filter((f) => significantFiles.has(f.name));
+							if (sigFiles.length > 0) {
+								await processAtomExtraction(
+									child.name,
+									result.itemId,
+									organismItemId,
+									sigFiles,
+									records,
+									edgeRecords,
+									resolvedItems,
 									logs,
+									meta,
 									categoryId,
 								);
-								resolvedItems.set(atom.name, atomResult.itemId);
-
-								if (atomResult.itemId !== result.itemId) {
-									await createBelongsToEdge(
-										atomResult.itemId,
-										result.itemId,
-										logs,
-										{ level: "atom" },
-									);
-									edgeRecords.push({
-										sourceId: atomResult.itemId,
-										targetId: result.itemId,
-										type: "belongs_to",
-									});
-								} else {
-									plog(logs, "edge", `Skipped belongs_to: "${atom.name}" resolved to parent #${result.itemId} itself`, { item: atom.name });
-								}
-								records.push({
-									name: atom.name,
-									itemId: atomResult.itemId,
-									level: "atom",
-									action: atomResult.action,
-									makeDemo: atom.is_demoable,
-									verdict: atomResult.verdict,
-									matchedItemId: atomResult.matchedItemId,
-									code: atom.code,
-									files: [],
-								});
-							} catch (err) {
-								plog(logs, "error", `Failed atom "${atom.name}": ${err}`, { item: atom.name });
 							}
 						}
-					} catch (err) {
-						plog(logs, "error", `Atom extraction failed for "${molecule.name}": ${err}`, { item: molecule.name });
+					} else {
+						plog(logs, "process", `No source files for "${child.name}" — skipping decompose`, { item: child.name });
 					}
 				} else {
-					plog(logs, "process", `No source files for molecule "${molecule.name}" — skipping atom extraction`, { item: molecule.name });
+					// Leaf kind (element/snippet) at an intermediate level with files:
+					// extract atoms from the files
+					const childFiles = sourceFiles.filter((f) =>
+						child.files.includes(f.name) && significantFiles.has(f.name),
+					);
+					if (childFiles.length > 0) {
+						await processAtomExtraction(
+							child.name,
+							result.itemId,
+							organismItemId,
+							childFiles,
+							records,
+							edgeRecords,
+							resolvedItems,
+							logs,
+							meta,
+							categoryId,
+						);
+					}
 				}
 			} else {
-				plog(logs, "process", `Molecule "${molecule.name}" was reused — skipping atom extraction`, { item: molecule.name });
+				plog(logs, "process", `"${child.name}" was reused — skipping decompose`, { item: child.name });
 			}
 		} catch (err) {
-			plog(logs, "error", `Failed molecule "${molecule.name}": ${err}`, { item: molecule.name });
+			plog(logs, "error", `Failed child "${child.name}": ${err}`, { item: child.name });
 		}
+	}
+}
+
+// ── Atom Extraction Helper ───────────────────────────────────────────────────
+
+/**
+ * Extract atoms from a composite's files and resolve each one.
+ */
+async function processAtomExtraction(
+	parentName: string,
+	parentItemId: number,
+	_organismItemId: number,
+	files: FileInput[],
+	records: PieceRecord[],
+	edgeRecords: EdgeRecord[],
+	resolvedItems: Map<string, number>,
+	logs: LogEntry[],
+	meta?: { types?: string[]; domains?: string[]; tags?: string[] },
+	categoryId?: number | null,
+): Promise<void> {
+	try {
+		const extractResult = await extractAtoms(parentName, files, logs, meta);
+
+		// Log skipped atoms
+		for (const skipped of extractResult.skipped) {
+			plog(logs, "filter", `Skipped atom "${skipped.name}": ${skipped.reason}`, { item: skipped.name });
+		}
+
+		// Resolve each kept atom
+		for (const atom of extractResult.atoms) {
+			const atomKind: ItemKind = atom.kind || "snippet";
+			const atomPiece: PieceToResolve = {
+				name: atom.name,
+				description: atom.description,
+				code: atom.code,
+				is_demoable: atom.is_demoable,
+				files: [],
+				parent: parentName,
+				metadata: atom.metadata,
+				libraries: atom.libraries || atom.metadata?.libraries,
+				tags: atom.tags || atom.metadata?.tags,
+			};
+			const atomContext = `Atom of "${parentName}"`;
+
+			try {
+				const atomResult = await resolveItem(
+					atomPiece,
+					atomKind,
+					atomContext,
+					logs,
+					categoryId,
+				);
+				resolvedItems.set(atom.name, atomResult.itemId);
+
+				if (atomResult.itemId !== parentItemId) {
+					await createBelongsToEdge(
+						atomResult.itemId,
+						parentItemId,
+						logs,
+						{ kind: atomKind },
+					);
+					edgeRecords.push({
+						sourceId: atomResult.itemId,
+						targetId: parentItemId,
+						type: "belongs_to",
+					});
+				} else {
+					plog(logs, "edge", `Skipped belongs_to: "${atom.name}" resolved to parent #${parentItemId} itself`, { item: atom.name });
+				}
+				records.push({
+					name: atom.name,
+					itemId: atomResult.itemId,
+					kind: atomKind,
+					action: atomResult.action,
+					makeDemo: atom.is_demoable,
+					verdict: atomResult.verdict,
+					matchedItemId: atomResult.matchedItemId,
+					code: atom.code,
+					files: [],
+				});
+			} catch (err) {
+				plog(logs, "error", `Failed atom "${atom.name}": ${err}`, { item: atom.name });
+			}
+		}
+	} catch (err) {
+		plog(logs, "error", `Atom extraction failed for "${parentName}": ${err}`, { item: parentName });
 	}
 }
 
@@ -1076,8 +1239,9 @@ async function processChildren(
  * Reused pieces skip decomposition (children already exist).
  *
  * Flow:
- *   1. Process outline children (sub_organisms + molecules) recursively
- *   2. Handle orphan files (not assigned by outline)
+ *   1. Deduplicate outline children (horizontal + vertical)
+ *   2. Process children recursively (with consumed-files tracking)
+ *   3. Handle orphan files
  */
 export async function runHierarchyPipeline(
 	organismItemId: number,
@@ -1107,24 +1271,29 @@ export async function runHierarchyPipeline(
 		for (const f of sourceFiles) significantFiles.add(f.name);
 	}
 
+	const allFileNames = sourceFiles.map((f) => f.name);
+
 	plog(logs, "pipeline", `Starting hierarchy pipeline for organism #${organismItemId} "${outline.organism.name}"`, {
 		data: {
 			organismItemId,
 			organismName: outline.organism.name,
 			organismKind: outline.organism.kind,
 			totalFiles: sourceFiles.length,
-			fileNames: sourceFiles.map((f) => f.name),
-			outlineSubOrganisms: outline.sub_organisms.map((s) => ({ name: s.name, files: s.files })),
-			outlineMolecules: outline.molecules.map((m) => ({ name: m.name, files: m.files })),
+			fileNames: allFileNames,
+			children: outline.children.map((c) => ({ name: c.name, kind: c.kind, files: c.files })),
 		},
 	});
 
-	// ── Process outline children recursively ─────────────────────────────
+	// ── Deduplicate outline children ─────────────────────────────────
+
+	const dedupedChildren = deduplicatePieces(outline.children, allFileNames, logs);
+
+	// ── Process outline children recursively ─────────────────────────
 
 	await processChildren(
-		outline.sub_organisms,
-		outline.molecules,
+		dedupedChildren,
 		outline.organism.name,
+		organismItemId,
 		organismItemId,
 		sourceFiles,
 		significantFiles,
@@ -1136,13 +1305,10 @@ export async function runHierarchyPipeline(
 		categoryId,
 	);
 
-	// ── Handle orphan files ──────────────────────────────────────────────
+	// ── Handle orphan files ──────────────────────────────────────────
 
 	const assignedFiles = new Set<string>();
-	for (const p of outline.sub_organisms) {
-		for (const f of p.files) assignedFiles.add(f);
-	}
-	for (const p of outline.molecules) {
+	for (const p of dedupedChildren) {
 		for (const f of p.files) assignedFiles.add(f);
 	}
 
@@ -1163,10 +1329,13 @@ export async function runHierarchyPipeline(
 				meta,
 			);
 
+			const orphanFileNames = orphanFiles.map((f) => f.name);
+			const dedupedOrphans = deduplicatePieces(orphanResult.children, orphanFileNames, logs);
+
 			await processChildren(
-				orphanResult.sub_organisms,
-				orphanResult.molecules,
+				dedupedOrphans,
 				outline.organism.name,
+				organismItemId,
 				organismItemId,
 				orphanFiles,
 				significantFiles,

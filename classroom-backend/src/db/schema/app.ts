@@ -8,6 +8,7 @@ import {
   pgTable,
   timestamp,
   index,
+  uniqueIndex,
   vector,
 } from "drizzle-orm/pg-core";
 
@@ -24,7 +25,7 @@ const timestamps = {
 // ── Shared types ──────────────────────────────────────────────────────────────
 
 export type UseCase = { title: string; use: string };
-export type ItemKind = "snippet" | "component" | "collection";
+export type ItemKind = "snippet" | "element" | "component" | "structure" | "collection";
 
 // ── Categories ────────────────────────────────────────────────────────────────
 
@@ -111,6 +112,27 @@ export const itemFiles = pgTable(
     ...timestamps,
   },
   (table) => [index("item_files_item_id_idx").on(table.itemId)],
+);
+
+// ── Item File Links (junction: child items → organism's files) ───────────────
+
+export const itemFileLinks = pgTable(
+  "item_file_links",
+  {
+    id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+    itemId: integer("item_id")
+      .notNull()
+      .references(() => items.id, { onDelete: "cascade" }),
+    itemFileId: integer("item_file_id")
+      .notNull()
+      .references(() => itemFiles.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    index("idx_item_file_links_item_id").on(table.itemId),
+    index("idx_item_file_links_file_id").on(table.itemFileId),
+    uniqueIndex("idx_item_file_links_unique").on(table.itemId, table.itemFileId),
+  ],
 );
 
 // ── Demos ────────────────────────────────────────────────────────────────────
@@ -204,10 +226,22 @@ export const itemRelations = relations(items, ({ one, many }) => ({
   files: many(itemFiles),
 }));
 
-export const itemFileRelations = relations(itemFiles, ({ one }) => ({
+export const itemFileRelations = relations(itemFiles, ({ one, many }) => ({
   item: one(items, {
     fields: [itemFiles.itemId],
     references: [items.id],
+  }),
+  links: many(itemFileLinks),
+}));
+
+export const itemFileLinkRelations = relations(itemFileLinks, ({ one }) => ({
+  item: one(items, {
+    fields: [itemFileLinks.itemId],
+    references: [items.id],
+  }),
+  itemFile: one(itemFiles, {
+    fields: [itemFileLinks.itemFileId],
+    references: [itemFiles.id],
   }),
 }));
 
@@ -254,6 +288,9 @@ export type NewItemFile = typeof itemFiles.$inferInsert;
 
 export type Edge = typeof edges.$inferSelect;
 export type NewEdge = typeof edges.$inferInsert;
+
+export type ItemFileLink = typeof itemFileLinks.$inferSelect;
+export type NewItemFileLink = typeof itemFileLinks.$inferInsert;
 
 export type Demo = typeof demos.$inferSelect;
 export type NewDemo = typeof demos.$inferInsert;

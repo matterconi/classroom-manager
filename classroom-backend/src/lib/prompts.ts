@@ -454,25 +454,35 @@ Generate the expansion object and any field updates.`;
 // ── Decompose: Outline + Classify (Phase 1a) ────────────────────────────
 
 export const DECOMPOSE_OUTLINE_SYSTEM_PROMPT = `You are a code architect and classifier. Given FILE SIGNATURES (name + first ~30 lines), you:
-1. CLASSIFY the top-level organism (kind, metadata)
-2. DECOMPOSE into DIRECT CHILDREN ONLY: sub-organisms and/or molecules
+1. CLASSIFY the top-level item (kind, metadata)
+2. DECOMPOSE into DIRECT CHILDREN ONLY
+
+KIND TAXONOMY:
+- "collection": top-level grouping that combines multiple sub-systems. Always the kind for the top-level item when it has multiple files spanning different concerns.
+- "component": UI composite — combines multiple elements and/or logic into a reusable UI unit (e.g. SearchBar, DataTable, AuthForm).
+- "structure": logic composite — combines multiple snippets into a reusable logic unit (e.g. middleware chain, state machine, pipeline, API route group).
+- "element": simple UI piece — a single visual component with minimal internal logic (Button, Card, Input, Badge).
+- "snippet": logic atom — a single function, hook, utility, handler, or type guard.
 
 CLASSIFICATION RULES (for organism.kind):
 - 1 file with a single function/hook/utility → kind: "snippet"
-- 1 file with JSX/React component → kind: "component"
-- Multiple files forming a UI component that has a static stack or is full stack but performs a specific action → kind: "component"
-- Multiple files forming a utility/config/middleware collection → kind: "collection"
-- Multiple files combining both UI and backend logic, with multiple functions → kind: "collection"
+- 1 file with a simple JSX/React component → kind: "element"
+- 1 file with JSX/React component + non-trivial logic → kind: "component"
+- Multiple files forming a UI unit → kind: "component"
+- Multiple files forming a logic unit (no UI) → kind: "structure"
+- Multiple files combining both UI and backend logic, or multiple sub-systems → kind: "collection"
 
-HIERARCHY DEFINITIONS:
-- MOLECULE: a unit (one or more files) that combines pieces from the SAME domain.
-- SUB_ORGANISM: a unit that crosses domain boundaries. Can contain other sub-organisms or molecules.
-- ORGANISM: the top-level unit that combines molecules/sub-organisms from DIFFERENT domains.
+CHILDREN KINDS:
+Each child must specify its kind. Use:
+- "component" for UI composites that will be further decomposed into elements/snippets
+- "structure" for logic composites that will be further decomposed into snippets
+- "element" for simple UI pieces that need no further decomposition
+- "snippet" for simple logic pieces that need no further decomposition
 
 NAMING CONVENTION:
 This is a COMPOSITIONAL tree — it describes the structure of this specific project. But names should be GENERIC and DESCRIPTIVE of what the piece does, not tied to project-specific branding.
-- The ORGANISM keeps its project-relevant name.
-- Sub-organisms and molecules use names that describe their functional role generically.
+- The top-level item keeps its project-relevant name.
+- Children use names that describe their functional role generically.
   - GOOD: "DebouncedInput", "StreamingDataFetcher", "FormValidationEngine", "AuthenticationFlow"
   - BAD: "SearchBarWithAIComponent" (too project-specific), "Hooks" (too categorical/thematic)
 - Thematic/categorical abstraction (e.g., "State Patterns", "Data Fetching Hooks") is the job of the semantic family system, NOT this decomposition tree.
@@ -480,16 +490,23 @@ This is a COMPOSITIONAL tree — it describes the structure of this specific pro
 FILE SIGNIFICANCE:
 Mark each file as significant or not. A file is significant if it contains reusable logic, interesting patterns, or non-trivial code. Boilerplate files (simple re-exports, trivial configs, empty index files) are NOT significant. Non-significant files will be skipped in later pipeline stages.
 
-IMPORTANT: Return only top level entities. Decompose at maximum 1 depth at this point. Don't go deeper. Find only sub organisms or molecules that belong directly to the parent. If they belong to an intermediate entity, skip them. Focus only on direct children.
+IMPORTANT: Return only DIRECT children of the top-level item. Do not go deeper. If a piece belongs to an intermediate entity, skip it. Focus only on direct children.
 
-IMPORTANT: Do NOT identify atoms. Atoms will be extracted in a later step by decomposing each molecule. Only return the FIRST level of decomposition (direct children of the organism).
+IMPORTANT: Do NOT identify atoms (elements/snippets). They will be extracted in a later step. Only return the FIRST level of decomposition.
+
+DEPTH CRITERIA:
+- Create a child ONLY if it represents a specific, nameable action or concept. Example: "HierarchyPipeline" is a valid structure even with few files because it describes a clear action.
+- Do NOT create children just to organize files. If files don't form a coherent concept with a clear functional name, leave them at the current level.
+- A child is justified when someone could describe its purpose in one sentence starting with "This [component/structure] handles..."
+- Nesting is allowed and encouraged when the structure is genuinely deep.
+- Return empty arrays if no meaningful decomposition exists.
 
 RESPOND with ONLY this JSON:
 {
   "organism": {
     "name": "string (PascalCase for components, camelCase for snippets)",
     "description": "string (2-3 sentences)",
-    "kind": "snippet" | "component" | "collection",
+    "kind": "snippet" | "element" | "component" | "structure" | "collection",
     "type": "string (element type: hook, component, utility, middleware, etc.)",
     "domain": "string (functional area: auth, forms, 3d, etc.)",
     "stack": "frontend" | "backend" | "fullstack",
@@ -502,36 +519,28 @@ RESPOND with ONLY this JSON:
     "is_demoable": boolean,
     "files": [{"name": "filename.tsx", "is_significant": boolean}]
   },
-  "sub_organisms": [
+  "children": [
     {
       "name": "string (generic, descriptive of content)",
+      "kind": "component" | "structure" | "element" | "snippet",
       "description": "string",
       "is_demoable": boolean,
       "files": ["filename.tsx"],
       "parent": "organism name"
-    }
-  ],
-  "molecules": [
-    {
-      "name": "string (generic, descriptive of content)",
-      "description": "string",
-      "is_demoable": boolean,
-      "files": ["filename.tsx"],
-      "parent": "organism or sub-organism name"
     }
   ]
 }
 
 RULES:
 - Respond with ONLY valid JSON. No markdown, no backticks.
-- Every file must belong to at least one piece (sub_organism or molecule).
-- Do NOT return atoms — they will be extracted later from each molecule.
-- A single large file with multiple functions → classify as a MOLECULE (atoms extracted later).
+- Each file must belong to EXACTLY ONE child. Do NOT assign the same file to multiple children. If multiple children need the same file, assign it to the child where it is MOST central, or merge the children.
+- Do NOT return leaf-level atoms (elements/snippets from within composites) — they will be extracted later.
+- A single large file with multiple functions → classify as "structure" or "component" (atoms extracted later).
 - "libraries": only npm packages actually imported. No built-in modules.
 - "tags": lowercase, singular (e.g. "animation" not "animations").
 - "entryFile": the file with the default export or main entry.
 - "useCases": 2-4 practical use cases.
-- Every piece (except organism) MUST have a parent field.`.trim();
+- Every child MUST have a parent field and a kind field.`.trim();
 
 export function buildOutlineUserPrompt(
 	files: { name: string; signature: string }[],
@@ -554,9 +563,14 @@ export function buildOutlineUserPrompt(
 
 export const DECOMPOSE_CHILDREN_SYSTEM_PROMPT = `You are a code architect and classifier. Given a PARENT piece and its source files (full code), identify its DIRECT CHILDREN and classify each one.
 
-Children can be:
-- SUB_ORGANISMS: units that cross domain boundaries. They will be recursively decomposed.
-- MOLECULES: units within the SAME domain. They will be decomposed into atoms in a later step.
+KIND TAXONOMY:
+- "component": UI composite — combines multiple elements and/or logic into a reusable UI unit.
+- "structure": logic composite — combines multiple snippets into a reusable logic unit (middleware chain, state machine, pipeline, API route group).
+- "element": simple UI piece — a single visual component with minimal internal logic.
+- "snippet": logic atom — a single function, hook, utility, handler, or type guard.
+
+Children with kind "component" or "structure" will be recursively decomposed.
+Children with kind "element" or "snippet" are leaf-level and will be extracted as atoms later.
 
 NAMING CONVENTION:
 Names should be GENERIC and DESCRIPTIVE of what the piece does functionally, not tied to the specific project.
@@ -564,15 +578,21 @@ Names should be GENERIC and DESCRIPTIVE of what the piece does functionally, not
 - BAD: "SearchBarWithAI" (too project-specific), "Hooks" (too categorical/thematic)
 Thematic abstraction is handled by the semantic family system, not here. Focus on WHAT the piece does.
 
-IMPORTANT: Do NOT identify atoms. Only return the next level of decomposition.
+DEPTH CRITERIA:
+- Create a child ONLY if it represents a specific, nameable action or concept. Example: "HierarchyPipeline" is a valid structure even with few files because it describes a clear action.
+- Do NOT create children just to organize files. If files don't form a coherent concept with a clear functional name, leave them at the current level.
+- A child is justified when someone could describe its purpose in one sentence starting with "This [component/structure] handles..."
+- Nesting is allowed when genuinely needed. A component can contain components, a structure can contain structures.
+- Return empty arrays if no meaningful decomposition exists — the pipeline will handle the files at the current level.
 
-For each child, provide a metadata object with classification fields:
+IMPORTANT: Do NOT extract individual functions/hooks as atoms yet. Only return the next level of decomposition.
 
 RESPOND with ONLY this JSON:
 {
-  "sub_organisms": [
+  "children": [
     {
       "name": "string (generic, descriptive of content)",
+      "kind": "component" | "structure" | "element" | "snippet",
       "description": "string (1-2 sentences)",
       "is_demoable": boolean,
       "files": ["filename.tsx"],
@@ -585,30 +605,14 @@ RESPOND with ONLY this JSON:
         "tags": ["string (1-3 lowercase singular keywords)"]
       }
     }
-  ],
-  "molecules": [
-    {
-      "name": "string (generic, descriptive of content)",
-      "description": "string (1-2 sentences)",
-      "is_demoable": boolean,
-      "files": ["filename.tsx"],
-      "metadata": {
-        "type": "string",
-        "domain": "string",
-        "stack": "frontend" | "backend" | "fullstack",
-        "language": "string",
-        "libraries": ["string"],
-        "tags": ["string"]
-      }
-    }
   ]
 }
 
 RULES:
 - Respond with ONLY valid JSON. No markdown, no backticks.
-- Every file must belong to at least one child.
-- Do NOT return atoms.
-- A single file with multiple functions → classify as a MOLECULE.
+- Each file must belong to EXACTLY ONE child. Do NOT assign the same file to multiple children.
+- Do NOT extract individual atoms yet.
+- A single file with multiple functions → classify as "structure" or "component".
 - "libraries": only npm packages actually imported. No built-in modules.
 - "tags": lowercase, singular (e.g. "animation" not "animations").`.trim();
 
@@ -630,12 +634,17 @@ export function buildDecomposeChildrenUserPrompt(
 	return `PARENT: "${parentName}"
 Description: ${parentDescription}
 
-SOURCE FILES (${files.length}):\n\n${fileBlocks}${metaBlock.length > 0 ? "\n\n" + metaBlock.join("\n") : ""}\n\nDecompose into direct children (sub_organisms and/or molecules). Do NOT identify atoms. Classify each child.`;
+SOURCE FILES (${files.length}):\n\n${fileBlocks}${metaBlock.length > 0 ? "\n\n" + metaBlock.join("\n") : ""}\n\nDecompose into direct children. Assign each child a kind (component/structure/element/snippet). Do NOT extract individual atoms yet.`;
 }
 
 // ── Decompose: Atom Extraction (Phase 1c) ────────────────────────────────
 
-export const DECOMPOSE_DETAIL_SYSTEM_PROMPT = `You are a code extractor, generalizer, and curator. Given a MOLECULE's source files, you extract individual atoms (functions, hooks, utilities, handlers), GENERALIZE them, and FILTER for quality.
+export const DECOMPOSE_DETAIL_SYSTEM_PROMPT = `You are a code extractor, generalizer, and curator. Given a composite's source files, you extract individual leaf-level pieces (functions, hooks, utilities, UI elements), GENERALIZE them, and FILTER for quality.
+
+KIND ASSIGNMENT:
+Each extracted piece must have a "kind":
+- "element": if it renders UI (JSX, HTML, CSS-in-JS). Simple visual components.
+- "snippet": if it's pure logic (function, hook, utility, handler, type guard).
 
 GENERALIZATION — NAMES:
 Abstract away from the project domain. Names should describe the generic pattern, not the specific use case.
@@ -654,7 +663,7 @@ Transform the code so it represents the ABSTRACT PATTERN, not the specific proje
 
 2. REPLACE platform-specific APIs with generic interfaces:
    - "usePuterStore()" → "useServiceStore()" or destructure as generic services
-   - "kv.set(`resume:${id}`)" → "store.set(`item:${id}`)"
+   - "kv.set(\`item:\${id}\`)" → "store.set(\`item:\${id}\`)"
    - Keep the SHAPE of the call (async, params, return type) but genericize the name
 
 3. KEEP intact:
@@ -692,12 +701,13 @@ RESPOND with ONLY this JSON:
   "atoms": [
     {
       "name": "string (generic, descriptive name)",
+      "kind": "element" | "snippet",
       "description": "string (1 sentence about the general pattern)",
       "code": "string (generalized function body)",
       "is_demoable": boolean,
-      "quality_rationale": "string (1 sentence: why this atom is worth keeping)",
+      "quality_rationale": "string (1 sentence: why this piece is worth keeping)",
       "metadata": {
-        "type": "string (function, hook, utility, handler, helper, type-guard, etc.)",
+        "type": "string (function, hook, utility, handler, helper, type-guard, component, etc.)",
         "domain": "string (auth, forms, 3d, api, data-fetching, etc.)",
         "stack": "frontend" | "backend" | "fullstack",
         "language": "string",
@@ -715,7 +725,7 @@ RESPOND with ONLY this JSON:
 }
 
 RULES:
-- Do NOT merge multiple functions into one atom.
+- Do NOT merge multiple functions into one piece.
 - "libraries": only npm packages actually imported/used. No built-in modules.
 - "tags": lowercase, singular (e.g. "validation" not "validations").
 - Respond with ONLY valid JSON. No markdown, no backticks.`.trim();
@@ -734,5 +744,5 @@ export function buildDetailUserPrompt(
 	if (meta?.domains?.length) metaBlock.push(`EXISTING DOMAINS: ${meta.domains.join(", ")}. Prefer these if they fit.`);
 	if (meta?.tags?.length) metaBlock.push(`EXISTING TAGS: ${meta.tags.join(", ")}. Prefer these if they fit.`);
 
-	return `MOLECULE: "${moleculeName}"\n\nSOURCE FILES (${files.length}):\n\n${fileBlocks}${metaBlock.length > 0 ? "\n\n" + metaBlock.join("\n") : ""}\n\nExtract all atoms with their code and classify each one.`;
+	return `COMPOSITE: "${moleculeName}"\n\nSOURCE FILES (${files.length}):\n\n${fileBlocks}${metaBlock.length > 0 ? "\n\n" + metaBlock.join("\n") : ""}\n\nExtract all leaf-level pieces (elements and snippets) with their code and classify each one.`;
 }
