@@ -45,7 +45,7 @@ function App() {
                 syncWithLocation: true,
                 warnWhenUnsavedChanges: true,
                 projectId: "9PKLXz-l2vDyN-fCLkJc",
-                title: { text: "La Bottega UI" },
+                title: { text: "AI Recursive Pipeline" },
               }}
               resources={[
                 {

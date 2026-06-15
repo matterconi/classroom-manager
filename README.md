@@ -4,7 +4,7 @@ Self-recursive AI pipeline for analyzing and categorizing an application's codeb
 
 ## Repository
 
-- GitHub: [github.com/matterconi/classroom-manager](https://github.com/matterconi/classroom-manager)
+- GitHub: [github.com/matterconi/ai-recursive-pipeline-refine-dashboard](https://github.com/matterconi/ai-recursive-pipeline-refine-dashboard)
 
 ## Overview
 

@@ -1,7 +1,7 @@
 {
-  "name": "la-bottega-ui-backend",
+  "name": "ai-recursive-pipeline-api",
   "version": "1.0.0",
-  "description": "La Bottega UI — Backend API",
+  "description": "AI Recursive Pipeline — Backend API",
   "type": "module",
   "main": "dist/server.js",
   "scripts": {

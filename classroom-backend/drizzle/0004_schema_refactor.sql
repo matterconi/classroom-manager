@@ -1,5 +1,5 @@
 -- ============================================================================
--- Migration 0004: Schema Refactor — La Bottega UI final architecture
+-- Migration 0004: Schema Refactor — AI Recursive Pipeline architecture
 -- Components (UI), Snippets (code logic), Collections (features), Theory (CS)
 -- ============================================================================
 

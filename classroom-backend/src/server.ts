@@ -37,7 +37,7 @@ app.use("/api/demos", demoRouter)
 app.use("/api/tree-nodes", treeNodeRouter)
 
 app.get("/", (_req: Request, res: Response) => {
-  res.json({ message: "La Bottega UI — API" });
+  res.json({ message: "AI Recursive Pipeline — API" });
 });
 
 app.listen(PORT, "0.0.0.0", () => {
