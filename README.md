@@ -1,23 +1,31 @@
-# Classroom Manager
+# AI Recursive Pipeline + Refine Dashboard
 
-Full-stack learning workspace for collecting UI components, snippets, theory notes, categories, and collections, with AI-assisted search and content organization.
+Self-recursive AI pipeline for analyzing and categorizing an application's codebase, paired with a Refine dashboard for browsing the generated hierarchy, relationships, demos, and searchable knowledge structure.
 
 ## Repository
 
 - GitHub: [github.com/matterconi/classroom-manager](https://github.com/matterconi/classroom-manager)
 
+## Overview
+
+This project evolved from a classroom-style resource manager into a code intelligence tool. The backend walks through application code, builds structured item records, clusters related files and concepts, scores coherence, generates hierarchy layers, and exposes the result through API routes. The frontend is a Refine-based dashboard for inspecting, searching, and refining that recursive map.
+
+The goal is to turn an app's source code into an explorable system: components, snippets, concepts, demos, relationships, and categories become connected artifacts instead of loose files.
+
 ## Features
 
-- Admin-style frontend for components, snippets, theory notes, collections, and categories
-- Create, list, and inspect learning resources through Refine pages
+- Recursive codebase categorization pipeline
+- AI-assisted hierarchy generation for application structure
+- Relationship mapping between code items, demos, snippets, and concepts
+- Search routes for exploring generated knowledge
+- Coherence, scoring, clustering, and rendering pipeline modules
+- Refine dashboard for browsing components, snippets, theory notes, categories, and collections
 - File upload and markdown/code-oriented UI components
-- AI routes for search, demos, rendering, clustering, and hierarchy generation
-- Relationship and similarity tooling for connecting resources
 - Backend API with authentication, security middleware, and database migrations
 
 ## Tech Stack
 
-### Frontend
+### Dashboard
 
 - React 19
 - Vite
@@ -32,7 +40,7 @@ Full-stack learning workspace for collecting UI components, snippets, theory not
 - Recharts
 - Sandpack
 
-### Backend
+### Pipeline API
 
 - Node.js
 - Express 5
@@ -46,9 +54,10 @@ Full-stack learning workspace for collecting UI components, snippets, theory not
 ## Project Structure
 
 ```text
-classroom-fullstack/classroom-frontend   React/Refine frontend
-classroom-backend                        Express API, auth, database, AI routes
-data                                     Local data and pipeline artifacts
+classroom-fullstack/classroom-frontend   Refine dashboard for exploring pipeline output
+classroom-backend                        Express API, auth, database, AI routes, recursive pipeline
+data                                     Local generated data and pipeline artifacts
+pipeline.txt                            Pipeline notes and current processing context
 ```
 
 ## Getting Started
@@ -61,7 +70,7 @@ npm install
 npm run dev
 ```
 
-Install and run the frontend:
+Install and run the dashboard:
 
 ```bash
 cd classroom-fullstack/classroom-frontend
@@ -79,7 +88,7 @@ npm run db:generate
 npm run db:migrate
 ```
 
-## Frontend Scripts
+## Dashboard Scripts
 
 ```bash
 npm run dev
